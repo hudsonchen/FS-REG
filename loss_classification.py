@@ -78,7 +78,6 @@ class loss_classification_list:
         def convert_apply(apply_fn, inputs, params, state):
             def apply_fn_(inputs):
                 return apply_fn(params, state, None, inputs)[0]
-
             return apply_fn_
 
         apply_fn_jacobian = convert_apply(self.apply_fn, input_, params, state)

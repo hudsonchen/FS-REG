@@ -19,7 +19,7 @@ import resnet_mod
 # config.update('jax_disable_jit', True)
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "4,5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.4"
 abspath = os.path.abspath(__file__)
 path = os.path.dirname(abspath)
@@ -36,6 +36,7 @@ parser.add_argument('--lr_decay', type=float, default='0.5')
 parser.add_argument('--dummy_input_dim', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--inverse', action="store_true", default=False)
+parser.add_argument('--use_bn', action="store_true", default=False)
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--aug', action="store_true", default=False)
 parser.add_argument('--save', action="store_true", default=False)
