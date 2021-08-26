@@ -151,7 +151,7 @@ class ResNet(hk.Module):
             "blocks_per_group": (2, 2, 2, 2),
             "bottleneck": False,
             "channels_per_group": (64, 128, 256, 512),
-            "use_projection": (False, True, True, True),
+            "use_projection": (True, True, True, True),
         },
     }
 
@@ -213,10 +213,10 @@ class ResNet(hk.Module):
 
         initial_conv_config = dict(initial_conv_config or {})
         initial_conv_config.setdefault("output_channels", 64)
-        # initial_conv_config.setdefault("kernel_shape", 3)
-        # initial_conv_config.setdefault("stride", 1)
-        initial_conv_config.setdefault("kernel_shape", 7)
-        initial_conv_config.setdefault("stride", 2)
+        initial_conv_config.setdefault("kernel_shape", 3)
+        initial_conv_config.setdefault("stride", 1)
+        # initial_conv_config.setdefault("kernel_shape", 7)
+        # initial_conv_config.setdefault("stride", 2)
         initial_conv_config.setdefault("with_bias", False)
         initial_conv_config.setdefault("padding", "SAME")
         initial_conv_config.setdefault("name", "initial_conv")
@@ -247,10 +247,10 @@ class ResNet(hk.Module):
     def __call__(self, inputs, is_training, test_local_stats=False):
         out = inputs
         out = self.initial_conv(out)
-        out = hk.max_pool(out,
-                          window_shape=(1, 3, 3, 1),
-                          strides=(1, 2, 2, 1),
-                          padding="SAME")
+        # out = hk.max_pool(out,
+        #                   window_shape=(1, 3, 3, 1),
+        #                   strides=(1, 2, 2, 1),
+        #                   padding="SAME")
 
         for block_group in self.block_groups:
             out = block_group(out, is_training, test_local_stats)

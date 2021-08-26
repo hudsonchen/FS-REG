@@ -19,7 +19,7 @@ import resnet_mod
 # config.update('jax_disable_jit', True)
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.4"
 abspath = os.path.abspath(__file__)
 path = os.path.dirname(abspath)
@@ -94,7 +94,7 @@ params = params_init
 
 # Optimizer Initialization
 def schedule_fn(learning_rate, n_batches):
-    epoch_points = [int(args.epochs * 0.5), int(args.epochs * 0.8)]
+    epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.5), int(args.epochs * 0.8)]
     epoch_points = (jnp.array(epoch_points) * n_batches).tolist()
     return utils.piecewise_constant_schedule(learning_rate, epoch_points, args.lr_decay)
 
@@ -161,12 +161,22 @@ Evaluate = utils_logging.Evaluate(apply_fn=apply_fn_train,
 
 print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
 
+# Temp Evaluation
+# temp_eval = loss_classification_list.ntk_norm_loss_temp
+
 print(f"--- Start Training with {args.method}--- \n")
 for epoch in tqdm(range(args.epochs)):
     for batch_idx, (image, label) in enumerate(train_loader):
         image, label = utils.tensor2array(image, label)
         rng_key, _ = jax.random.split(rng_key)
         params, state, opt_state = update(params, state, opt_state, rng_key, image, label)
+
+        # Temp Evalation
+        # freg, ntk, ntk_inverse = temp_eval(params, params, state, rng_key, image, label)
+        # print('freg', freg)
+        # print('NTK', ntk)
+        # print('NTK Inv', ntk_inverse)
+
 
     if (epoch + 1) % args.log_freq == 0:
         metric_train = Evaluate.evaluate(train_loader,

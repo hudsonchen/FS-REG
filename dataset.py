@@ -82,7 +82,10 @@ def get_MNIST(batch_size, train_size, root="./data/"):
     rnd.shuffle(idxs)
     train_idxs = idxs[:train_size]
 
-    train_sampler = torch.utils.data.sampler.SubsetRandomSampler(train_idxs)
+    if train_size == train_size_all:
+        train_sampler = None
+    else:
+        train_sampler = torch.utils.data.sampler.SubsetRandomSampler(train_idxs)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=False, num_workers=2, sampler=train_sampler,
@@ -139,9 +142,9 @@ def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/"):
     )
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
-                                               shuffle=False, num_workers=2, sampler=train_sampler)
+                                               shuffle=False, num_workers=4, sampler=train_sampler)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
-                                              shuffle=False, num_workers=2)
+                                              shuffle=False, num_workers=4)
 
     return image_size, num_classes, train_loader, test_loader
 
