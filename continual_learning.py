@@ -1,3 +1,5 @@
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 import numpy as np
 import jax
 from jax import jit
@@ -26,7 +28,8 @@ parser.add_argument('--dummy_num', type=int, default=10)
 parser.add_argument('--inverse', action="store_true", default=False)
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--data_augmentation', action="store_true", default=False)
-parser.add_argument('--epochs', type=int, default=1)
+parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--coreset_size', type=int, default=10)
 parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=float, default=100)
@@ -38,8 +41,6 @@ num_tasks = 10
 data_gen = dataset.PermutedMnistGenerator(num_tasks)
 
 train_size, in_dim, out_dim = data_gen.get_dims()
-x_coresets, y_coresets = [], []
-x_testsets, y_testsets = [], []
 
 # Load MLP
 model = network.MLP(output_dim=class_num,
@@ -92,7 +93,7 @@ def update(params: hk.Params,
            rng_key: jnp.array,
            x,
            y,
-           ) -> Tuple[hk.Params, optax.OptState]:
+           ):
     params_copy = params
     grads, new_state = jax.grad(loss_fun, argnums=0, has_aux=True)(params, params_copy, state, rng_key, x, y)
     updates, opt_state = opt.update(grads, opt_state)
@@ -108,7 +109,7 @@ def update_cl(params: hk.Params,
               rng_key: jnp.array,
               x,
               y,
-              ) -> Tuple[hk.Params, optax.OptState]:
+              ):
     grads, new_state = jax.grad(loss_fun_cl, argnums=0, has_aux=True)(params, params_last, state, rng_key, x, y)
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
@@ -116,11 +117,15 @@ def update_cl(params: hk.Params,
 
 
 all_acc = np.array([])
+x_coresets, y_coresets = [], []
+x_testsets, y_testsets = [], []
 
 for task_id in range(data_gen.max_iter):
     x_train, y_train, x_test, y_test = data_gen.next_task()
     x_testsets.append(x_test)
     y_testsets.append(y_test)
+    x_coresets, y_coresets, _, _ = utils_cl.k_center(x_coresets, y_coresets, x_train, y_train,
+                                                                 args.coreset_size)
 
     if task_id == 0:
         for _ in tqdm(range(args.epochs)):
@@ -138,5 +143,29 @@ for task_id in range(data_gen.max_iter):
                 label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
                 params, state, opt_state = update_cl(params, params_last, state, opt_state, rng_key, image, label)
 
-    acc = utils_cl.get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets)
+    # Train with coreset
+    x_coresets_train, y_coresets_train = utils_cl.merge_coresets(x_coresets, y_coresets)
+    params_eval = params
+    state_eval = state
+    opt_state_eval = opt_state
+
+    core_set_batch_size = args.coreset_size
+    for _ in range(args.epochs):
+        for batch_idx in range(int(x_coresets_train.shape[0] / core_set_batch_size)):
+            rng_key, _ = jax.random.split(rng_key)
+            image = x_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
+            label = y_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
+            params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, state_eval, opt_state_eval, rng_key, image, label)
+
+    # Evaluate
+    acc = []
+    for i in range(len(x_testsets)):
+        x_test, y_test = x_testsets[i], y_testsets[i]
+        pred = jax.nn.softmax(apply_fn(params_eval, state_eval, rng_key, x_test)[0], axis=1)
+        pred_y = jnp.argmax(pred, axis=1)
+        y = jnp.argmax(y_test, axis=1)
+        cur_acc = len(jnp.where((pred_y - y) == 0)[0]) * 1.0 / y.shape[0]
+        acc.append(cur_acc)
     print(acc)
+
+print(f'Final Average Accuracy:{np.array(acc).mean()}')

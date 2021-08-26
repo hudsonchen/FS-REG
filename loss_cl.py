@@ -40,7 +40,7 @@ class loss_cl_list:
                            rng_key: jnp.array,
                            x,
                            y,
-                           ) -> jnp.ndarray:
+                           ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat) + eps) * y, axis=1), axis=0)
         return -log_likelihood, state
@@ -53,7 +53,7 @@ class loss_cl_list:
                             rng_key: jnp.array,
                             x,
                             y,
-                            ) -> jnp.ndarray:
+                            ):
         f_hat = self.apply_fn(params, state, rng_key, x)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat) + eps) * y, axis=1), axis=0)
@@ -71,16 +71,15 @@ class loss_cl_list:
                        rng_key: jnp.array,
                        x,
                        y,
-                       ) -> jnp.ndarray:
+                       ):
         f_hat = self.apply_fn(params, state, rng_key, x)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat) + eps) * y, axis=1), axis=0)
 
         f_hat_old = self.apply_fn(params_last, state, rng_key, x)[0]
         # f is of shape (batch_size, class_num)
-        f_norm = ((f_hat_old - f_hat) ** 2).sum() / x.shape[0]
+        f_norm = jnp.sqrt(((f_hat_old - f_hat) ** 2).sum(1) + eps).mean() ** 2
         return -log_likelihood + self.regularization * f_norm, state
-
 
     @partial(jit, static_argnums=(0,))
     def ntk_norm_loss(self,
@@ -90,7 +89,7 @@ class loss_cl_list:
                       rng_key: jnp.array,
                       x,
                       y,
-                      ) -> jnp.ndarray:
+                      ):
         f_hat = self.apply_fn(params, state, rng_key, x)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat) + eps) * y, axis=1), axis=0)
@@ -135,56 +134,7 @@ class loss_cl_list:
                     freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + eps * jnp.eye(self.dummy_input_dim)) @ y_ntk_)
                 else:
                     freg += jnp.squeeze(y_ntk_.T @ ntk_ @ y_ntk_)
-        freg /= ntk_input.shape[0]
+        freg = (jnp.sqrt(freg + eps) / ntk_input_all.shape[0]) ** 2
         return -log_likelihood + self.regularization * freg, state
 
-    # @partial(jit, static_argnums=(0, ))
-    # def ntk_norm_loss(params: hk.Params,
-    #                   state: hk.State,
-    #                   rng_key: jnp.array,
-    #                   x,
-    #                   y,
-    #                   ) -> jnp.ndarray:
-    #     y_hat = jax.nn.softmax(apply_fn(params, state, rng_key, x)[0], axis=1)
-    #     log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat) + eps) * y, axis=1), axis=0)
-    #
-    #     # Compute function norm f(x)^T @ J(x)^T @ J(x) @ f(x)
-    #     ntk_input_all = x[random.shuffle(rng_key, np.arange(x.shape[0]))[:dummy_input_dim], :]  # Specify input for NTK
-    #
-    #     def convert_to_ntk(apply_fn, inputs, params, state):
-    #         def apply_fn_ntk(params):
-    #             return apply_fn(params, state, None, inputs)[0]
-    #
-    #         return apply_fn_ntk
-    #
-    #     if element_wise:
-    #         freg = 0
-    #         for j in range(dummy_input_dim):
-    #             ntk_input = ntk_input_all[j, :][None]
-    #             apply_fn_ntk = convert_to_ntk(apply_fn, ntk_input, params, state)
-    #             ntk = custom_ntk.get_ntk(apply_fn_ntk, params)
-    #
-    #             y_ntk = apply_fn(params, state, rng_key, ntk_input)[0]
-    #             for i in range(class_num):
-    #                 ntk_ = ntk[:, i, :, i]
-    #                 y_ntk_ = y_ntk[:, i][:, None]
-    #                 if inverse:
-    #                     freg += jnp.squeeze(y_ntk_ / ntk_ * y_ntk_)
-    #                 else:
-    #                     freg += jnp.squeeze(y_ntk_ * ntk_ * y_ntk_)
-    #     else:
-    #         ntk_input = ntk_input_all
-    #         apply_fn_ntk = convert_to_ntk(apply_fn, ntk_input, params, state)
-    #         ntk = custom_ntk.get_ntk(apply_fn_ntk, params)
-    #
-    #         y_ntk = apply_fn(params, state, rng_key, ntk_input)[0]
-    #         freg = 0
-    #         for i in range(class_num):
-    #             ntk_ = ntk[:, i, :, i]
-    #             y_ntk_ = y_ntk[:, i][:, None]
-    #             if inverse:
-    #                 freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + 0.01 * jnp.eye(dummy_input_dim)) @ y_ntk_)
-    #             else:
-    #                 freg += jnp.squeeze(y_ntk_.T @ ntk_ @ y_ntk_)
-    #     freg /= ntk_input.shape[0]
-    #     return -log_likelihood + regularization * freg, state
+

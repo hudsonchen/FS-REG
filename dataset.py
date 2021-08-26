@@ -225,7 +225,7 @@ def collate_fn(batch):
 
 class PermutedMnistGenerator:
     def __init__(self, max_iter=10):
-        f = gzip.open('data/mnist.pkl.gz', 'rb')
+        f = gzip.open('/home/xzhoubi/hudson/function_map/data/mnist.pkl.gz', 'rb')
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
         train_set, valid_set, test_set = u.load()

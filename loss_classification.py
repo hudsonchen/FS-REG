@@ -39,7 +39,7 @@ class loss_classification_list:
                            rng_key: jnp.array,
                            x,
                            y,
-                           ) -> jnp.ndarray:
+                           ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
         return -log_likelihood, state
@@ -52,7 +52,7 @@ class loss_classification_list:
                  rng_key: jnp.array,
                  x,
                  y,
-                 ) -> jnp.ndarray:
+                 ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
         params_not_batchnorm = hk.data_structures.filter(utils.predicate_batchnorm, params)
@@ -67,7 +67,7 @@ class loss_classification_list:
                       rng_key: jnp.array,
                       x,
                       y,
-                      ) -> jnp.ndarray:
+                      ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -96,7 +96,7 @@ class loss_classification_list:
                     rng_key: jnp.array,
                     x,
                     y,
-                    ) -> jnp.ndarray:
+                    ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -116,7 +116,7 @@ class loss_classification_list:
                             rng_key: jnp.array,
                             x,
                             y,
-                            ) -> jnp.ndarray:
+                            ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -137,8 +137,7 @@ class loss_classification_list:
         jac_norm = jnp.diag(jac_norm).mean() ** 2
 
         f = self.apply_fn(params, state, rng_key, input_)[0]
-        f_norm = jnp.sqrt((f ** 2).sum(1) + eps).mean()
-        f_norm = f_norm ** 2
+        f_norm = jnp.sqrt((f ** 2).sum(1) + eps).mean() ** 2
         return -log_likelihood + self.regularization * (jac_norm + f_norm), state
 
     @partial(jit, static_argnums=(0,))
@@ -149,7 +148,7 @@ class loss_classification_list:
                       rng_key: jnp.array,
                       x,
                       y,
-                      ) -> jnp.ndarray:
+                      ):
         y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -204,7 +203,7 @@ class loss_classification_list:
                            rng_key: jnp.array,
                            x,
                            y,
-                           ) -> jnp.ndarray:
+                           ):
 
         # Compute function norm f(x)^T @ J(x)^T @ J(x) @ f(x)
         ntk_input_all = x[random.shuffle(rng_key, np.arange(x.shape[0]))[:self.dummy_input_dim],
