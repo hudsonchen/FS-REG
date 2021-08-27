@@ -1,9 +1,12 @@
 import numpy as np
+import os
 import jax
 import jax.numpy as jnp
+import argparse
+from typing import Tuple, List, Dict
 
 
-def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets, x_coresets, y_coresets):
+def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets):
     acc = []
     for i in range(len(x_testsets)):
         x_test, y_test = x_testsets[i], y_testsets[i]
@@ -16,39 +19,31 @@ def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets, x_cores
     return acc
 
 
-""" Random coreset selection """
-
-
-def rand_from_batch(x_coreset, y_coreset, x_train, y_train, coreset_size):
-    # Randomly select from (x_train, y_train) and add to current coreset (x_coreset, y_coreset)
-    idx = np.random.choice(x_train.shape[0], coreset_size, False)
-    x_coreset.append(x_train[idx, :])
-    y_coreset.append(y_train[idx, :])
-    x_train = np.delete(x_train, idx, axis=0)
-    y_train = np.delete(y_train, idx, axis=0)
-    return x_coreset, y_coreset, x_train, y_train
-
-
-""" K-center coreset selection """
-
-
-def k_center(x_coreset, y_coreset, x_train, y_train, coreset_size):
+def coreset_selection(x_coreset, y_coreset, x_train, y_train, coreset_method, coreset_size):
     # Select K centers from (x_train, y_train) and add to current coreset (x_coreset, y_coreset)
-    dists = np.full(x_train.shape[0], np.inf)
-    current_id = 0
-    dists = update_distance(dists, x_train, current_id)
-    idx = [current_id]
-
-    for i in range(1, coreset_size):
-        current_id = np.argmax(dists)
+    if coreset_method == 'k_means':
+        dists = np.full(x_train.shape[0], np.inf)
+        current_id = 0
         dists = update_distance(dists, x_train, current_id)
-        idx.append(current_id)
+        idx = [current_id]
 
-    x_coreset.append(x_train[idx, :])
-    y_coreset.append(y_train[idx, :])
-    x_train = np.delete(x_train, idx, axis=0)
-    y_train = np.delete(y_train, idx, axis=0)
+        for i in range(1, coreset_size):
+            current_id = np.argmax(dists)
+            dists = update_distance(dists, x_train, current_id)
+            idx.append(current_id)
 
+        x_coreset.append(x_train[idx, :])
+        y_coreset.append(y_train[idx, :])
+        x_train = np.delete(x_train, idx, axis=0)
+        y_train = np.delete(y_train, idx, axis=0)
+    elif coreset_method == 'random':
+        idx = np.random.permutation(np.arange(x_train.shape[0]))[:coreset_size]
+        x_coreset.append(x_train[idx, :])
+        y_coreset.append(y_train[idx, :])
+        x_train = np.delete(x_train, idx, axis=0)
+        y_train = np.delete(y_train, idx, axis=0)
+    else:
+        raise NotImplementedError(coreset_method)
     return x_coreset, y_coreset, x_train, y_train
 
 
@@ -68,3 +63,42 @@ def merge_coresets(x_coresets, y_coresets):
     merged_x = merged_x[seq, :]
     merged_y = merged_y[seq, :]
     return merged_x, merged_y
+
+
+def ind_points_selection(coreset, batch, ind_size, ind_method):
+    if ind_method == 'both':
+        idx_coreset = np.random.permutation(np.arange(coreset.shape[0]))[:int(ind_size / 2)]
+        ind_point_from_coreset = coreset[idx_coreset, :]
+        idx_batch = np.random.permutation(np.arange(batch.shape[0]))[:int(ind_size / 2)]
+        ind_point_from_batch = batch[idx_batch, :]
+        ind_points = np.concatenate((ind_point_from_batch, ind_point_from_coreset), axis=0)
+    elif ind_method == 'core':
+        idx_coreset = np.random.permutation(np.arange(coreset.shape[0]))[:int(ind_size)]
+        ind_point_from_coreset = coreset[idx_coreset, :]
+        ind_points = ind_point_from_coreset
+    elif ind_method == 'train':
+        idx_batch = np.random.permutation(np.arange(batch.shape[0]))[:int(ind_size)]
+        ind_point_from_batch = batch[idx_batch, :]
+        ind_points = ind_point_from_batch
+    else:
+        raise NotImplementedError(ind_method)
+    return ind_points
+
+
+def process_args(args: argparse.Namespace) -> Dict:
+    kwargs = vars(args)
+    save_path = args.save_path.rstrip()
+    save_path = (
+        f"{save_path}/{args.dataset}/dataset_{args.dataset}__method_{args.method}"
+        f"__reg_{args.reg}__seed_{args.seed}__"
+    )
+    i = 1
+    while os.path.exists(f"{save_path}{i}") or os.path.exists(
+            f"{save_path}{i}__complete"
+    ):
+        i += 1
+    save_path = f"{save_path}{i}"
+    kwargs["save_path"] = save_path
+    if args.save:
+        os.mkdir(save_path)
+    return kwargs

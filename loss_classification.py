@@ -159,7 +159,6 @@ class loss_classification_list:
         def convert_to_ntk(apply_fn, inputs, state):
             def apply_fn_ntk(params):
                 return apply_fn(params, state, None, inputs)[0]
-
             return apply_fn_ntk
 
         if self.element_wise:
@@ -204,7 +203,6 @@ class loss_classification_list:
                            x,
                            y,
                            ):
-
         # Compute function norm f(x)^T @ J(x)^T @ J(x) @ f(x)
         ntk_input_all = x[random.shuffle(rng_key, np.arange(x.shape[0]))[:self.dummy_input_dim],
                         :]  # Specify input for NTK
@@ -228,9 +226,9 @@ class loss_classification_list:
                     ntk_ = ntk[:, i, :, i]
                     y_ntk_ = y_ntk[:, i][:, None]
                     if self.inverse:
-                        freg += jnp.squeeze(y_ntk_ / ntk_ * y_ntk_)
+                        freg += jnp.squeeze(y_ntk_ / ntk_ * y_ntk_).sum()
                     else:
-                        freg += jnp.squeeze(y_ntk_ * ntk_ * y_ntk_)
+                        freg += jnp.squeeze(y_ntk_ * ntk_ * y_ntk_).sum()
         else:
             ntk_input = ntk_input_all
             apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state)

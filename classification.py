@@ -19,7 +19,7 @@ import resnet_mod
 # config.update('jax_disable_jit', True)
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.4"
 abspath = os.path.abspath(__file__)
 path = os.path.dirname(abspath)

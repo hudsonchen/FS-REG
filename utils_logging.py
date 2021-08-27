@@ -6,6 +6,7 @@ import pickle
 import uncertainty_metrics.numpy as um
 import utils
 
+
 class Evaluate:
     def __init__(
             self,
@@ -89,4 +90,49 @@ class Evaluate:
         with open(f'{self.kwargs["save_path"]}/params_{epoch}', "wb") as file:
             pickle.dump(params, file)
         with open(f'{self.kwargs["save_path"]}/state_{epoch}', "wb") as file:
+            pickle.dump(state, file)
+
+
+class Evaluate_cl:
+    def __init__(
+            self,
+            apply_fn,
+            **kwargs,
+    ):
+        self.apply_fn = apply_fn
+        self.kwargs = kwargs['kwargs']
+
+    def evaluate(self, x_testsets, y_testsets, params, state, rng_key, batch_size):
+        acc = []
+        for i in range(len(x_testsets)):
+            x_test, y_test = x_testsets[i], y_testsets[i]
+
+            pred = jax.nn.softmax(self.apply_fn(params, state, rng_key, x_test)[0], axis=1)
+            pred_y = jnp.argmax(pred, axis=1)
+            y = jnp.argmax(y_test, axis=1)
+            cur_acc = len(jnp.where((pred_y - y) == 0)[0]) * 1.0 / y.shape[0]
+            acc.append(cur_acc)
+
+        return acc, jnp.array(acc).mean()
+
+    def save_log(self, task_id, acc):
+        file_name = f'{self.kwargs["save_path"]}/metrics.csv'
+        with open(file_name, 'a') as metrics_file:
+            metrics_header = [
+                'Task ID',
+                'Test Acc',
+            ]
+            writer = csv.DictWriter(metrics_file, fieldnames=metrics_header)
+            if os.stat(file_name).st_size == 0:
+                writer.writeheader()
+            writer.writerow({
+                'Task ID': task_id,
+                'Test Acc': acc
+            })
+            metrics_file.close()
+
+    def save_params(self, task_id, params, state):
+        with open(f'{self.kwargs["save_path"]}/params_{task_id}', "wb") as file:
+            pickle.dump(params, file)
+        with open(f'{self.kwargs["save_path"]}/state_{task_id}', "wb") as file:
             pickle.dump(state, file)
