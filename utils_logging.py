@@ -97,12 +97,29 @@ class Evaluate_cl:
     def __init__(
             self,
             apply_fn,
+            loss_fn,
             **kwargs,
     ):
         self.apply_fn = apply_fn
+        self.loss_fn = loss_fn
         self.kwargs = kwargs['kwargs']
 
-    def evaluate(self, x_testsets, y_testsets, params, state, rng_key, batch_size):
+        self.acc_dict = {}
+        self.average_acc_list = []
+        self.llk_dict = {}
+        self.loss_dict = {}
+
+    def evaluate_per_epoch(self, x_train, y_train, params, state, rng_key, batch_size):
+        llk_ = 0
+        for batch_idx in range(int(x_train.shape[0] / batch_size)):
+            image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
+            label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
+            llk = self.loss_fn(params, params, state, rng_key, image, label)[0]
+            llk_ += llk
+        llk_ /= (batch_idx + 1)
+        return llk_
+
+    def evaluate_per_task(self, task_id, x_testsets, y_testsets, params, state, rng_key, batch_size):
         acc = []
         for i in range(len(x_testsets)):
             x_test, y_test = x_testsets[i], y_testsets[i]
@@ -113,6 +130,8 @@ class Evaluate_cl:
             cur_acc = len(jnp.where((pred_y - y) == 0)[0]) * 1.0 / y.shape[0]
             acc.append(cur_acc)
 
+        self.acc_dict[f'{str(task_id)}'] = acc
+        self.average_acc_list.append(jnp.array(acc).mean())
         return acc, jnp.array(acc).mean()
 
     def save_log(self, task_id, acc):

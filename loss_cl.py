@@ -84,7 +84,7 @@ class loss_cl_list:
         f_norm = jnp.sqrt(((f_hat_old - f_hat) ** 2).sum(1) + eps).mean() ** 2
         return -log_likelihood + self.regularization * f_norm, state
 
-    # @partial(jit, static_argnums=(0,))
+    @partial(jit, static_argnums=(0,))
     def ntk_norm_loss(self,
                       params: hk.Params,
                       params_last: hk.Params,

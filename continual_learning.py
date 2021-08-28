@@ -1,11 +1,11 @@
 import os
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
 import numpy as np
 import copy
 import jax
-import pickle
 from jax import jit
+import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import dataset
 import network
@@ -17,33 +17,42 @@ import optax
 from typing import Tuple, Callable, List
 import utils_cl
 import loss_cl
+import utils_logging
 
 # from jax import config
-
 # config.update('jax_disable_jit', True)
 # config.update('jax_platform_name', 'cpu')
 # config.update("jax_enable_x64", True)
 
 # Args
 parser = argparse.ArgumentParser()
+parser.add_argument('--dataset', type=str, default='pmnist')
 parser.add_argument('--method', type=str, default='nothing')
 parser.add_argument('--reg', type=float, default='0.01')
-parser.add_argument('--dummy_num', type=int, default=30)
+parser.add_argument('--dummy_num', type=int, default=40)
+parser.add_argument('--ind_method', type=str, default='core')
 parser.add_argument('--inverse', action="store_true", default=False)
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--data_augmentation', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--coreset_size', type=int, default=200)
 parser.add_argument('--coreset_method', type=str, default='random')
+parser.add_argument('--train_on_coreset', action="store_true", default=False)
 parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/continual_learning/results")
+parser.add_argument('--save', action="store_true", default=False)
 parser.add_argument('--seed', type=int, default=1)
 args = parser.parse_args()
+kwargs = utils_cl.process_args(args)
 
 # Load Data
 class_num = 10
 num_tasks = 10
 data_gen = dataset.PermutedMnistGenerator(num_tasks)
+
 train_size, in_dim, out_dim = data_gen.get_dims()
+x_coresets, y_coresets = [], []
+x_testsets, y_testsets = [], []
 
 # Load MLP
 model = network.MLP(output_dim=class_num,
@@ -61,7 +70,7 @@ loss_classification_list = loss_classification.loss_classification_list(apply_fn
                                                                         class_num=class_num,
                                                                         inverse=args.inverse,
                                                                         element_wise=args.element_wise)
-loss_fun = jax.jit(loss_classification_list.llk_classification)
+loss_fun = loss_classification_list.llk_classification
 
 # Continual Learning Loss function
 loss_cl_list = loss_cl.loss_cl_list(apply_fn=apply_fn,
@@ -70,7 +79,6 @@ loss_cl_list = loss_cl.loss_cl_list(apply_fn=apply_fn,
                                     class_num=class_num,
                                     inverse=args.inverse,
                                     element_wise=args.element_wise)
-
 if args.method == 'nothing':
     loss_fun_cl = jax.jit(loss_cl_list.llk_classification)
 elif args.method == 'weight_l2':
@@ -80,32 +88,31 @@ elif args.method == 'function_l2':
 elif args.method == 'ntk_norm':
     loss_fun_cl = jax.jit(loss_cl_list.ntk_norm_loss)
 
-
 # Optimizer Initialization
 opt = optax.adam(args.lr)
 opt_state = opt.init(params_init)
 
 # Hyperparameter
-batch_size = 100
+batch_size = 200
 batch_num = int(train_size / batch_size)
 
 
 @jit
 def update(params: hk.Params,
-           params_copy: hk.Params,
            state: hk.State,
            opt_state: optax.OptState,
            rng_key: jnp.array,
            x,
            y,
            ):
+    params_copy = params
     grads, new_state = jax.grad(loss_fun, argnums=0, has_aux=True)(params, params_copy, state, rng_key, x, y)
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return new_params, new_state, opt_state
 
 
-# @jit
+@jit
 def update_cl(params: hk.Params,
               params_last: hk.Params,
               state: hk.State,
@@ -115,15 +122,16 @@ def update_cl(params: hk.Params,
               y,
               ind_points
               ):
-    grads, new_state = jax.grad(loss_fun_cl, argnums=0, has_aux=True)(params, params_last, state, rng_key, x, y, ind_points)
+    grads, new_state = jax.grad(loss_fun_cl, argnums=0, has_aux=True)(params, params_last, state, rng_key, x, y,
+                                                                      ind_points)
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return new_params, new_state, opt_state
 
 
-all_acc = np.array([])
-x_coresets, y_coresets = [], []
-x_testsets, y_testsets = [], []
+Evaluate_cl = utils_logging.Evaluate_cl(apply_fn=apply_fn,
+                                        loss_fn=loss_fun,
+                                        kwargs=kwargs)
 
 for task_id in range(data_gen.max_iter):
     x_train, y_train, x_test, y_test = data_gen.next_task()
@@ -134,78 +142,69 @@ for task_id in range(data_gen.max_iter):
                                                               args.coreset_method, args.coreset_size)
     x_coresets_train, y_coresets_train = utils_cl.merge_coresets(x_coresets, y_coresets)
 
+    Evaluate_cl.llk_dict[str(task_id)] = []
     if task_id == 0:
         for _ in tqdm(range(args.epochs)):
             for batch_idx in range(batch_num):
                 rng_key, _ = jax.random.split(rng_key)
                 image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
                 label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-                params, state, opt_state = update(params, params, state, opt_state, rng_key, image, label)
-        with open(f'/home/xzhoubi/hudson/function_map/continual_learning/params', "wb") as file:
-            params_ = params
-            pickle.dump(params_, file)
+                params, state, opt_state = update(params, state, opt_state, rng_key, image, label)
+
+            llk = Evaluate_cl.evaluate_per_epoch(x_train, y_train, params, state, rng_key, batch_size=1000)
+            Evaluate_cl.llk_dict[str(task_id)].append(llk)
+
     else:
-        with open(f'/home/xzhoubi/hudson/function_map/continual_learning/params', "rb") as file:
-            params_last = pickle.load(file)
-        # params_last = params_init
+        params_last = params
         for _ in tqdm(range(args.epochs)):
             for batch_idx in range(batch_num):
                 rng_key, _ = jax.random.split(rng_key)
                 image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
                 label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
 
-                # Sample inducing points
-                idx_coreset = np.random.permutation(np.arange(x_coresets_train.shape[0]))[:int(args.dummy_num / 2)]
-                ind_point_from_coreset = x_coresets_train[idx_coreset, :]
-                idx_batch = np.random.permutation(np.arange(image.shape[0]))[:int(args.dummy_num / 2)]
-                ind_point_from_batch = image[idx_batch, :]
-                ind_points = np.concatenate((ind_point_from_batch, ind_point_from_coreset), axis=0)
+                ind_points = utils_cl.ind_points_selection(x_coresets_train, image, args.dummy_num, args.ind_method)
 
                 params, state, opt_state = update_cl(params, params_last, state, opt_state, rng_key, image, label,
                                                      ind_points)
-                # debug
-                if batch_idx % 20 == 0:
-                    freg, _, _ = loss_cl_list.ntk_norm_loss_temp(params, params_last, state, rng_key, image, label,
-                                                                 ind_points)
-                    print('freg', freg)
+            llk = Evaluate_cl.evaluate_per_epoch(x_train, y_train, params, state, rng_key, batch_size=1000)
+            Evaluate_cl.llk_dict[str(task_id)].append(llk)
 
-                    # y_hat = apply_fn(params, state, rng_key, x_test)[0]
-                    # acc = jnp.mean(y_hat.argmax(-1) == y_test.argmax(-1))
-                    # print("Acc", acc)
-                    #
-                    # y_hat_last = apply_fn(params, state, rng_key, x_testsets[0])[0]
-                    # acc_last = jnp.mean(y_hat_last.argmax(-1) == y_testsets[0].argmax(-1))
-                    # print("Acc Last", acc_last)
+    # Visual Training Process
+    plt.figure()
+    plt.plot(np.arange(args.epochs), np.array(Evaluate_cl.llk_dict[str(task_id)]))
+    plt.title(f"Task # {task_id}")
+    plt.show()
 
+    # Train on coreset
+    params_eval = copy.deepcopy(params)
+    state_eval = copy.deepcopy(state)
+    opt_state_eval = copy.deepcopy(opt_state)
 
-    # Train with Core set
-    # params_eval = copy.deepcopy(params)
-    # state_eval = copy.deepcopy(state)
-    # opt_state_eval = copy.deepcopy(opt_state)
+    if args.train_on_coreset:
+        core_set_batch_size = args.coreset_size
+        for _ in range(args.epochs):
+            for batch_idx in range(int(x_coresets_train.shape[0] / core_set_batch_size)):
+                rng_key, _ = jax.random.split(rng_key)
+                image = x_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
+                label = y_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
 
-    # core_set_batch_size = args.coreset_size
-    # for _ in range(args.epochs):
-    #     for batch_idx in range(int(x_coresets_train.shape[0] / core_set_batch_size)):
-    #         rng_key, _ = jax.random.split(rng_key)
-    #         image = x_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
-    #         label = y_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
-    #
-    #         # Sample inducing points
-    #         idx_batch = np.random.permutation(np.arange(image.shape[0]))[:args.dummy_num]
-    #         ind_points = image[idx_batch, :]
-    #
-    #         params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, state_eval, opt_state_eval,
-    #                                                             rng_key, image, label, ind_points)
+                # Sample inducing points
+                idx_batch = np.random.permutation(np.arange(image.shape[0]))[:args.dummy_num]
+                ind_points = image[idx_batch, :]
 
-    # Evaluate
-    # acc = []
-    # for i in range(len(x_testsets)):
-    #     x_test, y_test = x_testsets[i], y_testsets[i]
-    #     pred = jax.nn.softmax(apply_fn(params_eval, state_eval, rng_key, x_test)[0], axis=1)
-    #     pred_y = jnp.argmax(pred, axis=1)
-    #     y = jnp.argmax(y_test, axis=1)
-    #     cur_acc = len(jnp.where((pred_y - y) == 0)[0]) * 1.0 / y.shape[0]
-    #     acc.append(cur_acc)
-    # print(acc)
+                params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, state_eval, opt_state_eval,
+                                                                    rng_key, image, label, ind_points)
 
-print(f'Final Average Accuracy:{np.array(acc).mean()}')
+    acc_list, acc = Evaluate_cl.evaluate_per_task(task_id,
+                                                  x_testsets,
+                                                  y_testsets,
+                                                  params_eval,
+                                                  state_eval,
+                                                  rng_key,
+                                                  batch_size=1000)
+    print(f"All Accuracy list: {acc_list}")
+    print(f"Mean Accuracy: {acc}")
+
+    if args.save:
+        Evaluate_cl.save_log(task_id, acc)
+        Evaluate_cl.save_params(task_id, params, state)
