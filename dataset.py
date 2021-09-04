@@ -97,22 +97,32 @@ def get_MNIST(batch_size, train_size, root="./data/"):
     return image_size, num_classes, train_loader, test_loader
 
 
-def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/"):
-    image_dim = 32
+def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/", crop_size=32):
+    image_dim = crop_size
     image_size = [1, 32, 32, 3]
     num_classes = 10
     train_size_all = 50000
     test_batch = 1000
 
     if data_augmentation:
-        train_transform = transforms.Compose(
-            [
-                transforms.RandomCrop(image_dim, padding=4),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-            ]
-        )
+        if image_size == 32:
+            train_transform = transforms.Compose(
+                [
+                    transforms.RandomCrop(image_dim, padding=4),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                ]
+            )
+        else:
+            train_transform = transforms.Compose(
+                [
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                ]
+            )
     else:
         train_transform = transforms.Compose(
             [
@@ -121,12 +131,23 @@ def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/"):
             ]
         )
 
-    test_transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ]
-    )
+    if image_size == 32:
+        test_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            ]
+        )
+    else:
+        test_transform = transforms.Compose(
+            [
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            ]
+        )
+
     idxs = np.arange(train_size_all)  # shuffle examples first
     rnd = np.random.RandomState(42)
     rnd.shuffle(idxs)
@@ -263,4 +284,3 @@ class PermutedMnistGenerator:
             self.cur_iter += 1
 
             return next_x_train, next_y_train, next_x_test, next_y_test
-

@@ -53,7 +53,8 @@ epochs = args.epochs
 image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR10(
     batch_size=args.batch_size,
     data_augmentation=args.aug,
-    train_size=args.train_size)
+    train_size=args.train_size,
+    crop_size=224)
 
 # Model Initialization
 x_init = jnp.ones(image_size)
@@ -64,33 +65,35 @@ net = MLP_mixer_mod.MlpMixer(patches=[16, 16],
                              hidden_dim=768,
                              tokens_mlp_dim=384,
                              channels_mlp_dim=3072)
-init_params = net.init(rng_key, x_init, train=False)['params']
+init_state, init_params = net.init(rng_key, x_init).pop('params')
 
 pretrained_path = '/home/xzhoubi/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
 params = checkpoint.load_pretrained(pretrained_path, init_params)
+state = init_state
 
 # Optimizer Initialization
 opt = optax.adam(1e-3)
 opt_state = opt.init(params)
 
 
-def loss_fun(params, x, y):
-    y_hat = jax.nn.softmax(net.apply(params, x), axis=1)
+def loss_fun(params, state, x, y):
+    y_hat = jax.nn.softmax(net.apply({'params': params, **state}, x, mutable=list(state.keys()))[0], axis=1)
     log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
-    return -log_likelihood
+    return -log_likelihood, state
 
 
 @jit
 def update(params: hk.Params,
+           state: hk.State,
            opt_state: optax.OptState,
            x,
            y,
-           ) -> Tuple[hk.Params, optax.OptState]:
+           ):
     """Learning rule (stochastic gradient descent)."""
-    grads, new_state = jax.grad(loss_fun, argnums=0, has_aux=True)(params, x, y)
+    grads, new_state = jax.grad(loss_fun, argnums=0, has_aux=True)(params, state, x, y)
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
-    return new_params, opt_state
+    return new_params, opt_state, new_state
 
 
 train_loss_list = []
@@ -107,7 +110,7 @@ print(f"--- Start Training with {args.method}--- \n")
 for epoch in tqdm(range(epochs)):
     for batch_idx, (image, label) in enumerate(train_loader):
         image, label = utils.tensor2array(image, label)
-        params, opt_state = update(params, opt_state, image, label)
+        params, opt_state, state = update(params, state, opt_state, image, label)
 
     if epoch % 5 == 0:
         train_loss = 0
@@ -116,14 +119,14 @@ for epoch in tqdm(range(epochs)):
         for idx, (image, label) in enumerate(train_loader):
             image, label = utils.tensor2array(image, label)
             rng_key, _ = random.split(rng_key)
-            loss_value = loss_fun(params, image, label)
+            loss_value = loss_fun(params, state, image, label)
             train_loss += loss_value
 
-            preds = net.apply(params, image)
+            preds = net.apply({'params': params, **state}, image, mutable=list(state.keys()))[0]
             acc = jnp.equal(jnp.argmax(preds, axis=1), jnp.argmax(label, axis=1)).sum()
             train_acc += acc
 
-            llk = loss_fun(params, image, label)
+            llk = loss_fun(params, state, image, label)
             train_llk += llk
 
         test_loss = 0
@@ -132,14 +135,14 @@ for epoch in tqdm(range(epochs)):
         for batch_idx, (image, label) in enumerate(test_loader):
             image, label = utils.tensor2array(image, label)
             rng_key, _ = random.split(rng_key)
-            loss_value = loss_fun(params, image, label)
+            loss_value = loss_fun(params, state, image, label)
             test_loss += loss_value
 
-            preds = net.apply(params, image)
+            preds = net.apply({'params': params, **state}, image, mutable=list(state.keys()))[0]
             acc = jnp.equal(jnp.argmax(preds, axis=1), jnp.argmax(label, axis=1)).sum()
             test_acc += acc
 
-            llk = loss_fun(params, image, label)
+            llk = loss_fun(params, state, image, label)
             test_llk += llk
 
         train_loss /= len(train_loader)

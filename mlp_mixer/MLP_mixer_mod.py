@@ -41,8 +41,7 @@ class MlpMixer(nn.Module):
   channels_mlp_dim: int
 
   @nn.compact
-  def __call__(self, inputs, *, train):
-    del train
+  def __call__(self, inputs):
     x = nn.Conv(self.hidden_dim, self.patches,
                 strides=self.patches, name='stem')(inputs)
     x = einops.rearrange(x, 'n h w c -> n (h w) c')

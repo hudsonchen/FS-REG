@@ -77,7 +77,6 @@ elif args.architecture == "resnet18":
         net = resnet_mod.ResNet18(10, use_bn=True)
         return net(x, is_training)
 
-
     forward = hk.transform_with_state(forward)
     init_fn = partial(forward.init, is_training=True)
     apply_fn_train = partial(forward.apply, is_training=True)
