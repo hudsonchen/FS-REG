@@ -98,26 +98,35 @@ class Evaluate_cl:
             self,
             apply_fn,
             loss_fn,
+            loss_fn_cl,
             **kwargs,
     ):
         self.apply_fn = apply_fn
         self.loss_fn = loss_fn
+        self.loss_fn_cl = loss_fn_cl
         self.kwargs = kwargs['kwargs']
 
         self.acc_dict = {}
         self.average_acc_list = []
         self.llk_dict = {}
-        self.loss_dict = {}
+        self.loss_value_dict = {}
 
-    def evaluate_per_epoch(self, x_train, y_train, params, state, rng_key, batch_size):
+    def evaluate_per_epoch(self, x_train, y_train, params, params_last, params_list,
+                           state, rng_key, ind_points, fisher, task_id, batch_size):
         llk_ = 0
+        loss_value_ = 0
         for batch_idx in range(int(x_train.shape[0] / batch_size)):
             image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
             label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
             llk = self.loss_fn(params, params, state, rng_key, image, label)[0]
             llk_ += llk
+            loss_value = self.loss_fn_cl(params, params_last, params_list, state, rng_key, image, label, ind_points, fisher)[0]
+            loss_value_ += loss_value
         llk_ /= (batch_idx + 1)
-        return llk_
+        loss_value_ /= (batch_idx + 1)
+        self.loss_value_dict[f'{str(task_id)}'].append(loss_value_)
+        self.llk_dict[f'{str(task_id)}'].append(llk_)
+        return 0
 
     def evaluate_per_task(self, task_id, x_testsets, y_testsets, params, state, rng_key, batch_size):
         acc = []

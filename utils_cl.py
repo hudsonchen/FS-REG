@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import argparse
 from typing import Tuple, List, Dict
+from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 
 
 def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets):
@@ -102,3 +103,15 @@ def process_args(args: argparse.Namespace) -> Dict:
     if args.save:
         os.mkdir(save_path)
     return kwargs
+
+
+def get_fisher(x_sample, y_sample, params, state, rng_key, llk_func):
+    params_copy = params
+    grads_sum = tree_map(lambda p: p * 0, params)
+    for i in range(x_sample.shape[0]):
+        x = x_sample[i, :][None]
+        y = y_sample[i, :][None]
+        grads, new_state = jax.grad(llk_func, argnums=0, has_aux=True)(params, params_copy, state, rng_key, x, y)
+        grads_square = tree_map(lambda p: p ** 2, grads)
+        grads_sum = tree_map(lambda p, q: p + q, grads_square, grads_sum)
+    return tree_map(lambda p: p / x_sample.shape[0], grads_sum)

@@ -1,6 +1,5 @@
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 import numpy as np
 import copy
 import jax
@@ -51,8 +50,6 @@ num_tasks = 10
 data_gen = dataset.PermutedMnistGenerator(num_tasks)
 
 train_size, in_dim, out_dim = data_gen.get_dims()
-x_coresets, y_coresets = [], []
-x_testsets, y_testsets = [], []
 
 # Load MLP
 model = network.MLP(output_dim=class_num,
@@ -87,6 +84,10 @@ elif args.method == 'function_l2':
     loss_fun_cl = jax.jit(loss_cl_list.f_l2_norm_loss)
 elif args.method == 'ntk_norm':
     loss_fun_cl = jax.jit(loss_cl_list.ntk_norm_loss)
+elif args.method == 'ntk_norm_all_prev':
+    loss_fun_cl = jax.jit(loss_cl_list.ntk_norm_loss_all_prev)
+else:
+    raise NotImplementedError(args.method)
 
 # Optimizer Initialization
 opt = optax.adam(args.lr)
@@ -115,15 +116,17 @@ def update(params: hk.Params,
 @jit
 def update_cl(params: hk.Params,
               params_last: hk.Params,
+              params_list,
               state: hk.State,
               opt_state: optax.OptState,
               rng_key: jnp.array,
               x,
               y,
-              ind_points
+              ind_points,
+              fisher
               ):
-    grads, new_state = jax.grad(loss_fun_cl, argnums=0, has_aux=True)(params, params_last, state, rng_key, x, y,
-                                                                      ind_points)
+    grads, new_state = jax.grad(loss_fun_cl, argnums=0, has_aux=True)(params, params_last, params_list,
+                                                                      state, rng_key, x, y, ind_points, fisher)
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
     return new_params, new_state, opt_state
@@ -131,7 +134,13 @@ def update_cl(params: hk.Params,
 
 Evaluate_cl = utils_logging.Evaluate_cl(apply_fn=apply_fn,
                                         loss_fn=loss_fun,
+                                        loss_fn_cl=loss_fun_cl,
                                         kwargs=kwargs)
+
+x_coresets, y_coresets = [], []
+x_testsets, y_testsets = [], []
+params_list = []
+
 
 for task_id in range(data_gen.max_iter):
     x_train, y_train, x_test, y_test = data_gen.next_task()
@@ -143,6 +152,8 @@ for task_id in range(data_gen.max_iter):
     x_coresets_train, y_coresets_train = utils_cl.merge_coresets(x_coresets, y_coresets)
 
     Evaluate_cl.llk_dict[str(task_id)] = []
+    Evaluate_cl.loss_value_dict[str(task_id)] = []
+
     if task_id == 0:
         for _ in tqdm(range(args.epochs)):
             for batch_idx in range(batch_num):
@@ -151,9 +162,6 @@ for task_id in range(data_gen.max_iter):
                 label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
                 params, state, opt_state = update(params, state, opt_state, rng_key, image, label)
 
-            llk = Evaluate_cl.evaluate_per_epoch(x_train, y_train, params, state, rng_key, batch_size=1000)
-            Evaluate_cl.llk_dict[str(task_id)].append(llk)
-
     else:
         params_last = params
         for _ in tqdm(range(args.epochs)):
@@ -161,26 +169,33 @@ for task_id in range(data_gen.max_iter):
                 rng_key, _ = jax.random.split(rng_key)
                 image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
                 label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-
                 ind_points = utils_cl.ind_points_selection(x_coresets_train, image, args.dummy_num, args.ind_method)
+                params, state, opt_state = update_cl(params, params_last, params_list, state,
+                                                     opt_state, rng_key, image, label, ind_points, fisher)
 
-                params, state, opt_state = update_cl(params, params_last, state, opt_state, rng_key, image, label,
-                                                     ind_points)
-            llk = Evaluate_cl.evaluate_per_epoch(x_train, y_train, params, state, rng_key, batch_size=1000)
-            Evaluate_cl.llk_dict[str(task_id)].append(llk)
+            Evaluate_cl.evaluate_per_epoch(x_train, y_train, params, params_last, params_list,
+                                           state, rng_key, ind_points, fisher,
+                                           task_id=task_id,
+                                           batch_size=1000)
+    # Put params in list
+    params_list.append(params)
 
     # Visual Training Process
-    plt.figure()
-    plt.plot(np.arange(args.epochs), np.array(Evaluate_cl.llk_dict[str(task_id)]))
-    plt.title(f"Task # {task_id}")
-    plt.show()
+    if task_id > 0:
+        fig = plt.figure(figsize=(10, 6))
+        ax_loss_value, ax_llk = fig.subplots(1, 2).flatten()
+        ax_llk.plot(np.arange(args.epochs), np.array(Evaluate_cl.llk_dict[str(task_id)]), label='LLK')
+        ax_loss_value.plot(np.arange(args.epochs), np.array(Evaluate_cl.loss_value_dict[str(task_id)]), label='Loss')
+        ax_llk.set_title(f"LLK on Task #{task_id}")
+        ax_loss_value.set_title(f"Loss on Task #{task_id}")
+        plt.show()
 
     # Train on coreset
     params_eval = copy.deepcopy(params)
     state_eval = copy.deepcopy(state)
     opt_state_eval = copy.deepcopy(opt_state)
 
-    if args.train_on_coreset:
+    if args.train_on_coreset and task_id > 0:
         core_set_batch_size = args.coreset_size
         for _ in range(args.epochs):
             for batch_idx in range(int(x_coresets_train.shape[0] / core_set_batch_size)):
@@ -192,8 +207,8 @@ for task_id in range(data_gen.max_iter):
                 idx_batch = np.random.permutation(np.arange(image.shape[0]))[:args.dummy_num]
                 ind_points = image[idx_batch, :]
 
-                params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, state_eval, opt_state_eval,
-                                                                    rng_key, image, label, ind_points)
+                params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, params_list, state_eval, opt_state_eval,
+                                                                    rng_key, image, label, ind_points, fisher)
 
     acc_list, acc = Evaluate_cl.evaluate_per_task(task_id,
                                                   x_testsets,
@@ -204,6 +219,13 @@ for task_id in range(data_gen.max_iter):
                                                   batch_size=1000)
     print(f"All Accuracy list: {acc_list}")
     print(f"Mean Accuracy: {acc}")
+
+    if args.method == 'weight_l2':
+        x_sample = x_train[:200, :]
+        y_sample = y_train[:200, :]
+        fisher = utils_cl.get_fisher(x_sample, y_sample, params, state, rng_key, llk_func=loss_classification_list.llk_classification)
+    else:
+        fisher = None
 
     if args.save:
         Evaluate_cl.save_log(task_id, acc)

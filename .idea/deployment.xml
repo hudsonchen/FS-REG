@@ -9,6 +9,20 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="xzhoubi@gpu10:22 agent (1)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/xzhoubi/hudson/function_map" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="xzhoubi@gpu10:22 agent (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/xzhoubi/hudson/function_map" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
       <paths name="xzhoubi@ust_5:22 agent">
         <serverdata>
           <mappings>
