@@ -263,3 +263,4 @@ class PermutedMnistGenerator:
             self.cur_iter += 1
 
             return next_x_train, next_y_train, next_x_test, next_y_test
+

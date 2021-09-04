@@ -127,7 +127,7 @@ def update(params: hk.Params,
            rng_key: jnp.array,
            x,
            y,
-           ) -> Tuple[hk.Params, optax.OptState]:
+           ):
     """Learning rule (stochastic gradient descent)."""
     params_copy = params
     grads, new_state = jax.grad(loss_fun, argnums=0, has_aux=True)(params, params_copy, state, rng_key, x, y)
@@ -152,6 +152,8 @@ elif args.method == 'f_norm':
     loss_fun = loss_classification_list.f_norm_loss
 elif args.method == 'laplacian_norm':
     loss_fun = loss_classification_list.laplacian_norm_loss
+else:
+    raise NotImplementedError(args.method)
 llk_classification = loss_classification_list.llk_classification
 
 Evaluate = utils_logging.Evaluate(apply_fn=apply_fn_train,
