@@ -55,7 +55,14 @@ def process_args(args: argparse.Namespace) -> Dict:
         os.mkdir(save_path)
     return kwargs
 
+
 def tensor2array(image, label):
     image = np.moveaxis(np.array(image, dtype=dtype_default), 1, 3)
     label = one_hot(np.array(label), 10)
     return image, label
+
+
+def split(arr, n_devices):
+    """Splits the first axis of `arr` evenly across the number of devices."""
+    return arr.reshape(n_devices, arr.shape[0] // n_devices, *arr.shape[1:])
+

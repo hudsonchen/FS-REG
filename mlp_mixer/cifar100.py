@@ -1,26 +1,24 @@
-import numpy as np
-from typing import Tuple
-from functools import partial
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "3, 4, 5, 6"
+# path = '/import/home/xzhoubi/hudson/function_map'
+# os.chdir(path)
+print(os.getcwd())
+import sys
+sys.path.append('..')
 import jax
+import flax
 import jax.numpy as jnp
 from jax import jit, random
-import matplotlib.pyplot as plt
-import haiku as hk
-import os
 import optax
 import argparse
 from tqdm import tqdm
-import loss_classification
 import dataset
 import mlp_mixer.MLP_mixer_mod as MLP_mixer_mod
 import mlp_mixer.checkpoint as checkpoint
+from mlp_mixer.utils_logging_pmap import Evaluate
 import utils
-# config.update('jax_disable_jit', True)
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
-abspath = os.path.abspath(__file__)
-path = os.path.dirname(abspath)
-os.chdir(path)
+# config.update('jax_disable_jit', True)
 
 # Args
 parser = argparse.ArgumentParser()
@@ -28,14 +26,17 @@ parser.add_argument('--method', type=str, default='map')
 parser.add_argument('--reg', type=float, default='0.01')
 parser.add_argument('--dummy_num', type=int, default=10)
 parser.add_argument('--inverse', action="store_true", default=False)
+parser.add_argument('--optimizer', type=str, default='none')
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--aug', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--lr_decay', type=float, default=0.5)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=200)
 args = parser.parse_args()
+kwargs = {}
 
 # Useful Global Variables
 rng_key = jax.random.PRNGKey(0)
@@ -48,6 +49,8 @@ element_wise = args.element_wise
 dummy_input_dim = args.dummy_num
 inverse = args.inverse
 epochs = args.epochs
+n_devices = jax.local_device_count()
+print(n_devices)
 
 # Load Dataset
 image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR10(
@@ -72,127 +75,111 @@ params = checkpoint.load_pretrained(pretrained_path, init_params)
 state = init_state
 
 # Optimizer Initialization
-opt = optax.adam(1e-3)
+def schedule_fn(learning_rate, n_batches):
+    epoch_points = [int(args.epochs * 0.5), int(args.epochs * 0.8)]
+    epoch_points = (jnp.array(epoch_points) * n_batches).tolist()
+    return utils.piecewise_constant_schedule(learning_rate, epoch_points, args.lr_decay)
+
+
+if args.optimizer == "adam":
+    # opt = optax.adam(args.lr)
+    schedule_fn_final = schedule_fn(args.lr, len(train_loader))
+    opt = optax.chain(
+        optax.scale_by_adam(eps=1e-4),
+        optax.scale_by_schedule(schedule_fn_final),
+        optax.scale(-1))
+elif args.optimizer == "sgd":
+    schedule_fn_final = schedule_fn(args.lr, len(train_loader))
+    momentum = 0.9
+    opt = optax.chain(
+            optax.trace(decay=momentum, nesterov=False),
+            optax.scale_by_schedule(schedule_fn_final),
+            optax.scale(-1),
+        )
+else:
+    raise NotImplementedError
 opt_state = opt.init(params)
 
+# Replicate to Multiple GPU
+params = flax.jax_utils.replicate(params)
+opt_state = flax.jax_utils.replicate(opt_state)
 
-def loss_fun(params, state, x, y):
+
+def loss_fun(params, x, y):
     y_hat = jax.nn.softmax(net.apply({'params': params, **state}, x, mutable=list(state.keys()))[0], axis=1)
     log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
-    return -log_likelihood, state
+    return -log_likelihood
 
 
 @jit
-def update(params: hk.Params,
-           state: hk.State,
+def update(params,
            opt_state: optax.OptState,
            x,
            y,
            ):
     """Learning rule (stochastic gradient descent)."""
-    grads, new_state = jax.grad(loss_fun, argnums=0, has_aux=True)(params, state, x, y)
+    loss_value, grads = jax.value_and_grad(loss_fun, argnums=0)(params, x, y)
+    grads = jax.lax.pmean(grads, axis_name='num_devices')
+    loss_value = jax.lax.pmean(loss_value, axis_name='num_devices')
     updates, opt_state = opt.update(grads, opt_state)
     new_params = optax.apply_updates(params, updates)
-    return new_params, opt_state, new_state
+    return loss_value, new_params, opt_state
 
 
-train_loss_list = []
-train_acc_list = []
-train_llk_list = []
+update = jax.pmap(update, axis_name='num_devices')
 
-test_loss_list = []
-test_acc_list = []
-test_llk_list = []
+Evaluate = Evaluate(apply_fn=net.apply,
+                    n_devices=n_devices,
+                    kwargs=kwargs)
 
 print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
-
 print(f"--- Start Training with {args.method}--- \n")
-for epoch in tqdm(range(epochs)):
-    for batch_idx, (image, label) in enumerate(train_loader):
+for epoch in range(epochs):
+    for batch_idx, (image, label) in enumerate(tqdm(train_loader)):
         image, label = utils.tensor2array(image, label)
-        params, opt_state, state = update(params, state, opt_state, image, label)
+        image = utils.split(image, n_devices)
+        label = utils.split(label, n_devices)
+        loss_value, params, opt_state = update(params, opt_state, image, label)
 
-    if epoch % 5 == 0:
-        train_loss = 0
-        train_acc = 0
-        train_llk = 0
-        for idx, (image, label) in enumerate(train_loader):
-            image, label = utils.tensor2array(image, label)
-            rng_key, _ = random.split(rng_key)
-            loss_value = loss_fun(params, state, image, label)
-            train_loss += loss_value
+        if batch_idx % 100 == 0:
+            print('loss value', loss_value.mean())
 
-            preds = net.apply({'params': params, **state}, image, mutable=list(state.keys()))[0]
-            acc = jnp.equal(jnp.argmax(preds, axis=1), jnp.argmax(label, axis=1)).sum()
-            train_acc += acc
 
-            llk = loss_fun(params, state, image, label)
-            train_llk += llk
+    metric_train = Evaluate.evaluate(train_loader,
+                                     params,
+                                     state,
+                                     rng_key,
+                                     batch_size=args.batch_size)
+    metric_test = Evaluate.evaluate(test_loader,
+                                    params,
+                                    state,
+                                    rng_key,
+                                    batch_size=1000)
 
-        test_loss = 0
-        test_acc = 0
-        test_llk = 0
-        for batch_idx, (image, label) in enumerate(test_loader):
-            image, label = utils.tensor2array(image, label)
-            rng_key, _ = random.split(rng_key)
-            loss_value = loss_fun(params, state, image, label)
-            test_loss += loss_value
+    print(f"Epoch:{epoch} Train Acc:{metric_train['acc']:2f}% Test Acc:{metric_test['acc']:2f}%")
+    print(f"Epoch:{epoch} Train LLK:{metric_train['llk']:2f} Test LLK:{metric_test['llk']:2f}")
 
-            preds = net.apply({'params': params, **state}, image, mutable=list(state.keys()))[0]
-            acc = jnp.equal(jnp.argmax(preds, axis=1), jnp.argmax(label, axis=1)).sum()
-            test_acc += acc
-
-            llk = loss_fun(params, state, image, label)
-            test_llk += llk
-
-        train_loss /= len(train_loader)
-        train_acc /= (args.train_size / 100.)
-        train_llk /= len(train_loader)
-        train_loss /= len(train_loader)
-        train_acc /= (len(train_loader) * args.batch_size / 100.)
-        train_llk /= len(train_loader)
-
-        test_loss /= len(test_loader)
-        test_acc /= (len(test_loader) * args.batch_size / 100.)
-        test_llk /= len(test_loader)
-
-        train_loss_list.append(train_loss)
-        train_acc_list.append(train_acc)
-        train_llk_list.append(train_llk)
-        train_loss_list.append(train_loss)
-        train_acc_list.append(train_acc)
-        train_llk_list.append(train_llk)
-        test_loss_list.append(test_loss)
-        test_acc_list.append(test_acc)
-        test_llk_list.append(test_llk)
-
-        print(
-            f"Epoch:{epoch} Partial Train Acc:{train_acc:2f}% Train Acc:{train_acc:2f}% Test Acc:{test_acc:2f}%")
-        print(f"Epoch:{epoch} Partial Train LLK:{train_llk:2f} Train LLK:{train_llk:2f} Test LLK:{test_llk:2f}")
-        print(
-            f"Epoch:{epoch} Partial Train Loss:{train_loss:3f} Train Loss:{train_loss:3f} Test Loss:{test_loss:3f}")
-
-fig = plt.figure(figsize=(15, 15))
-ax_all = fig.subplots(3, 3).flatten()
-ax_all[0].plot(np.array(train_loss_list))
-ax_all[0].set_title(f"Partial Train Loss")
-ax_all[1].plot(np.array(train_acc_list))
-ax_all[1].set_title(f"Partial Train Accuracy")
-ax_all[2].plot(np.array(train_llk_list))
-ax_all[2].set_title(f"Partial Train Log-likelihood")
-
-ax_all[3].plot(np.array(train_loss_list))
-ax_all[3].set_title(f"Complete Train Loss")
-ax_all[4].plot(np.array(train_acc_list))
-ax_all[4].set_title(f"Complete Train Accuracy")
-ax_all[5].plot(np.array(train_llk_list))
-ax_all[5].set_title(f"Complete Train Log-likelihood")
-
-ax_all[6].plot(np.array(test_loss_list))
-ax_all[6].set_title(f"Test Loss")
-ax_all[7].plot(np.array(test_acc_list))
-ax_all[7].set_title(f"Test Accuracy")
-ax_all[8].plot(np.array(test_llk_list))
-ax_all[8].set_title(f"Test Log-likelihood")
-
-plt.show()
+# fig = plt.figure(figsize=(15, 15))
+# ax_all = fig.subplots(3, 3).flatten()
+# ax_all[0].plot(np.array(train_loss_list))
+# ax_all[0].set_title(f"Partial Train Loss")
+# ax_all[1].plot(np.array(train_acc_list))
+# ax_all[1].set_title(f"Partial Train Accuracy")
+# ax_all[2].plot(np.array(train_llk_list))
+# ax_all[2].set_title(f"Partial Train Log-likelihood")
+#
+# ax_all[3].plot(np.array(train_loss_list))
+# ax_all[3].set_title(f"Complete Train Loss")
+# ax_all[4].plot(np.array(train_acc_list))
+# ax_all[4].set_title(f"Complete Train Accuracy")
+# ax_all[5].plot(np.array(train_llk_list))
+# ax_all[5].set_title(f"Complete Train Log-likelihood")
+#
+# ax_all[6].plot(np.array(test_loss_list))
+# ax_all[6].set_title(f"Test Loss")
+# ax_all[7].plot(np.array(test_acc_list))
+# ax_all[7].set_title(f"Test Accuracy")
+# ax_all[8].plot(np.array(test_llk_list))
+# ax_all[8].set_title(f"Test Log-likelihood")
+#
+# plt.show()
