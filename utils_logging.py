@@ -13,12 +13,14 @@ class Evaluate:
             apply_fn,
             loss_fn,
             llk_fn,
+            num_classes,
             **kwargs,
     ):
         self.loss_fn = loss_fn
         self.apply_fn = apply_fn
         self.llk_fn = llk_fn
         self.kwargs = kwargs['kwargs']
+        self.num_classes = num_classes
 
     def evaluate(self, loader, params, state, rng_key, batch_size):
         loss_ = 0
@@ -31,7 +33,7 @@ class Evaluate:
                   'ece': {}}
 
         for batch_idx, (image, label) in enumerate(loader):
-            image, label = utils.tensor2array(image, label)
+            image, label = utils.tensor2array(image, label, self.num_classes)
             rng_key, _ = jax.random.split(rng_key)
             loss_value = self.loss_fn(params, params, state, rng_key, image, label)[0]
             loss_ += loss_value

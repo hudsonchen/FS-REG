@@ -99,13 +99,13 @@ def get_MNIST(batch_size, train_size, root="./data/"):
 
 def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/", crop_size=32):
     image_dim = crop_size
-    image_size = [1, 32, 32, 3]
+    image_size = [1, image_dim, image_dim, 3]
     num_classes = 10
     train_size_all = 50000
     test_batch = 1000
 
     if data_augmentation:
-        if image_size == 32:
+        if image_dim == 32:
             train_transform = transforms.Compose(
                 [
                     transforms.RandomCrop(image_dim, padding=4),
@@ -131,7 +131,7 @@ def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/", 
             ]
         )
 
-    if image_size == 32:
+    if image_dim == 32:
         test_transform = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -170,72 +170,63 @@ def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/", 
     return image_size, num_classes, train_loader, test_loader
 
 
-def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/"):
-    image_dim = 32
-    image_size = [1, 32, 32, 3]
-    num_classes = 10
-    train_size_all = 50000.
+def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/", crop_size=32):
+    image_dim = crop_size
+    image_size = [1, image_dim, image_dim, 3]
+    num_classes = 100
+    train_size_all = 50000
+    test_batch = 1000
 
-    train_transform = transforms.Compose(
-        [
-            transforms.RandomHorizontalFlip(0.5),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ]
-    )
+    if image_dim == 32:
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(0.5),
+                transforms.RandomCrop(32, 4),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
 
-    test_transform = transforms.Compose(
-        [
-            transforms.Resize(32),
-            transforms.CenterCrop(32),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-        ]
-    )
+        test_transform = transforms.Compose(
+            [
+                transforms.Resize(32),
+                transforms.CenterCrop(32),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+    else:
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomHorizontalFlip(0.5),
+                transforms.RandomResizedCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
+
+        test_transform = transforms.Compose(
+            [
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+            ]
+        )
 
     train_dataset = torch_datasets.CIFAR100(
-        root=root,
-        train=True,
-        download=True,
-        transform=train_transform,
+        root, train=True, download=True, transform=train_transform
     )
-
-    trainloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=2
-    )
-
     test_dataset = torch_datasets.CIFAR100(
-        root=root,
-        train=False,
-        download=True,
-        transform=test_transform,
+        root, train=False, download=True, transform=test_transform
     )
 
-    testloader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=2
-    )
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
+                                               shuffle=False, num_workers=4)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
+                                              shuffle=False, num_workers=4)
 
-    trainloader_array = []
-    for i, data in enumerate(trainloader, 0):
-        x_batch = np.moveaxis(np.array(data[0], dtype=dtype_default), 1, 3)
-        y_batch = utils.one_hot(np.array(data[1]), 10)
-        trainloader_array.append([x_batch, y_batch])
-
-    testloader_array = []
-    for i, data in enumerate(testloader, 0):
-        x_batch = np.moveaxis(np.array(data[0], dtype=dtype_default), 1, 3)
-        y_batch = utils.one_hot(np.array(data[1]), 10)
-        testloader_array.append([x_batch, y_batch])
-
-    index = np.arange(len(trainloader_array))
-    ratio = train_size / train_size_all
-    partial_num = int(len(trainloader_array) * ratio)
-    np.random.shuffle(index)
-    partial_trainloader_array = []
-    for idx in index[:partial_num]:
-        partial_trainloader_array.append(trainloader_array[idx])
-    return image_size, num_classes, partial_trainloader_array, trainloader_array, testloader_array
+    return image_size, num_classes, train_loader, test_loader
 
 
 def collate_fn(batch):

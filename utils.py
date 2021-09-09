@@ -56,9 +56,9 @@ def process_args(args: argparse.Namespace) -> Dict:
     return kwargs
 
 
-def tensor2array(image, label):
+def tensor2array(image, label, num_classes):
     image = np.moveaxis(np.array(image, dtype=dtype_default), 1, 3)
-    label = one_hot(np.array(label), 10)
+    label = one_hot(np.array(label), num_classes)
     return image, label
 
 

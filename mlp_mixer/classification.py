@@ -27,6 +27,7 @@ parser.add_argument('--reg', type=float, default='0.01')
 parser.add_argument('--dummy_num', type=int, default=10)
 parser.add_argument('--inverse', action="store_true", default=False)
 parser.add_argument('--optimizer', type=str, default='none')
+parser.add_argument('--dataset', type=str, default='none')
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--aug', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
@@ -53,17 +54,26 @@ n_devices = jax.local_device_count()
 print(n_devices)
 
 # Load Dataset
-image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR10(
-    batch_size=args.batch_size,
-    data_augmentation=args.aug,
-    train_size=args.train_size,
-    crop_size=224)
-
+if args.dataset == 'cifar10':
+    image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR10(
+        batch_size=args.batch_size,
+        data_augmentation=args.aug,
+        train_size=args.train_size,
+        crop_size=224)
+elif args.dataset == 'cifar100':
+    image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR100(
+        batch_size=args.batch_size,
+        data_augmentation=args.aug,
+        train_size=args.train_size,
+        crop_size=224)
+else:
+    raise NotImplementedError(args.dataset)
 # Model Initialization
 x_init = jnp.ones(image_size)
+print(image_size)
 
 net = MLP_mixer_mod.MlpMixer(patches=[16, 16],
-                             num_classes=10,
+                             num_classes=num_classes,
                              num_blocks=12,
                              hidden_dim=768,
                              tokens_mlp_dim=384,
@@ -76,7 +86,7 @@ state = init_state
 
 # Optimizer Initialization
 def schedule_fn(learning_rate, n_batches):
-    epoch_points = [int(args.epochs * 0.5), int(args.epochs * 0.8)]
+    epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.5), int(args.epochs * 0.8)]
     epoch_points = (jnp.array(epoch_points) * n_batches).tolist()
     return utils.piecewise_constant_schedule(learning_rate, epoch_points, args.lr_decay)
 
@@ -97,7 +107,7 @@ elif args.optimizer == "sgd":
             optax.scale(-1),
         )
 else:
-    raise NotImplementedError
+    raise NotImplementedError(args.optimizer)
 opt_state = opt.init(params)
 
 # Replicate to Multiple GPU
@@ -130,13 +140,14 @@ update = jax.pmap(update, axis_name='num_devices')
 
 Evaluate = Evaluate(apply_fn=net.apply,
                     n_devices=n_devices,
-                    kwargs=kwargs)
+                    kwargs=kwargs,
+                    num_classses=num_classes)
 
 print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
 print(f"--- Start Training with {args.method}--- \n")
 for epoch in range(epochs):
     for batch_idx, (image, label) in enumerate(tqdm(train_loader)):
-        image, label = utils.tensor2array(image, label)
+        image, label = utils.tensor2array(image, label, num_classes)
         image = utils.split(image, n_devices)
         label = utils.split(label, n_devices)
         loss_value, params, opt_state = update(params, opt_state, image, label)
@@ -159,27 +170,4 @@ for epoch in range(epochs):
     print(f"Epoch:{epoch} Train Acc:{metric_train['acc']:2f}% Test Acc:{metric_test['acc']:2f}%")
     print(f"Epoch:{epoch} Train LLK:{metric_train['llk']:2f} Test LLK:{metric_test['llk']:2f}")
 
-# fig = plt.figure(figsize=(15, 15))
-# ax_all = fig.subplots(3, 3).flatten()
-# ax_all[0].plot(np.array(train_loss_list))
-# ax_all[0].set_title(f"Partial Train Loss")
-# ax_all[1].plot(np.array(train_acc_list))
-# ax_all[1].set_title(f"Partial Train Accuracy")
-# ax_all[2].plot(np.array(train_llk_list))
-# ax_all[2].set_title(f"Partial Train Log-likelihood")
-#
-# ax_all[3].plot(np.array(train_loss_list))
-# ax_all[3].set_title(f"Complete Train Loss")
-# ax_all[4].plot(np.array(train_acc_list))
-# ax_all[4].set_title(f"Complete Train Accuracy")
-# ax_all[5].plot(np.array(train_llk_list))
-# ax_all[5].set_title(f"Complete Train Log-likelihood")
-#
-# ax_all[6].plot(np.array(test_loss_list))
-# ax_all[6].set_title(f"Test Loss")
-# ax_all[7].plot(np.array(test_acc_list))
-# ax_all[7].set_title(f"Test Accuracy")
-# ax_all[8].plot(np.array(test_llk_list))
-# ax_all[8].set_title(f"Test Log-likelihood")
-#
-# plt.show()
+

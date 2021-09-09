@@ -19,10 +19,12 @@ class Evaluate:
             self,
             apply_fn,
             n_devices,
+            num_classses,
             **kwargs,
     ):
         self.apply_fn = apply_fn
         self.n_devices = n_devices
+        self.num_classes = num_classses
         self.kwargs = kwargs['kwargs']
 
     @partial(pmap, axis_name='num_devices', static_broadcasted_argnums=(0,))
@@ -42,7 +44,7 @@ class Evaluate:
                   'llk': {}}
 
         for batch_idx, (image, label) in enumerate(loader):
-            image, label = utils.tensor2array(image, label)
+            image, label = utils.tensor2array(image, label, self.num_classes)
             rng_key, _ = jax.random.split(rng_key)
             image = utils.split(image, self.n_devices)
             label = utils.split(label, self.n_devices)

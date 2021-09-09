@@ -168,7 +168,7 @@ print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
 print(f"--- Start Training with {args.method}--- \n")
 for epoch in tqdm(range(args.epochs)):
     for batch_idx, (image, label) in enumerate(train_loader):
-        image, label = utils.tensor2array(image, label)
+        image, label = utils.tensor2array(image, label, num_classes)
         rng_key, _ = jax.random.split(rng_key)
         params, state, opt_state = update(params, state, opt_state, rng_key, image, label)
 
