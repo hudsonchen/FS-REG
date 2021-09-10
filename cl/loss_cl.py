@@ -21,6 +21,7 @@ class loss_cl_list:
                  apply_fn,
                  regularization,
                  dummy_input_dim,
+                 head_style,
                  class_num,
                  element_wise,
                  inverse,
@@ -28,7 +29,10 @@ class loss_cl_list:
         self.apply_fn = apply_fn
         self.regularization = regularization
         self.dummy_input_dim = dummy_input_dim
-        self.class_num = class_num
+        if head_style == 'single':
+            self.class_num = class_num
+        elif head_style == 'multi':
+            self.class_num = 2
         self.inverse = inverse
         self.element_wise = element_wise
 
@@ -36,14 +40,14 @@ class loss_cl_list:
     def llk_classification(self,
                            params: hk.Params,
                            params_last: hk.Params,
-                           params_list,
                            state: hk.State,
                            rng_key: jnp.array,
                            x,
                            y,
-                           ind_points
+                           task_id,
                            ):
-        y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x)[0], axis=1)
+        task_id = jnp.ones(x.shape[0]) * task_id
+        y_hat = jax.nn.softmax(self.apply_fn(params, state, rng_key, x, task_id)[0], axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
         return -log_likelihood, state
 
@@ -56,10 +60,13 @@ class loss_cl_list:
                             rng_key: jnp.array,
                             x,
                             y,
+                            task_id,
                             ind_points,
+                            ind_id,
                             fisher
                             ):
-        f_hat = self.apply_fn(params, state, rng_key, x)[0]
+        task_id = jnp.ones(x.shape[0]) * task_id
+        f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
         params_not_batchnorm = hk.data_structures.filter(utils.predicate_batchnorm, params)
@@ -77,10 +84,13 @@ class loss_cl_list:
                             rng_key: jnp.array,
                             x,
                             y,
+                            task_id,
                             ind_points,
+                            ind_id,
                             fisher
                             ):
-        f_hat = self.apply_fn(params, state, rng_key, x)[0]
+        task_id = jnp.ones(x.shape[0]) * task_id
+        f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -101,10 +111,13 @@ class loss_cl_list:
                        rng_key: jnp.array,
                        x,
                        y,
+                       task_id,
                        ind_points,
+                       ind_id,
                        fisher
                        ):
-        f_hat = self.apply_fn(params, state, rng_key, x)[0]
+        task_id = jnp.ones(x.shape[0]) * task_id
+        f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -123,10 +136,13 @@ class loss_cl_list:
                       rng_key: jnp.array,
                       x,
                       y,
+                      task_id,
                       ind_points,
+                      ind_id,
                       fisher
                       ):
-        f_hat = self.apply_fn(params, state, rng_key, x)[0]
+        task_id = jnp.ones(x.shape[0]) * task_id
+        f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -136,22 +152,21 @@ class loss_cl_list:
         else:
             ntk_input_all = ind_points
 
-        def convert_to_ntk(apply_fn, inputs, state):
+        def convert_to_ntk(apply_fn, inputs, state, task_id):
             def apply_fn_ntk(params):
-                return apply_fn(params, state, None, inputs)[0]
-
+                return apply_fn(params, state, None, inputs, task_id)[0]
             return apply_fn_ntk
 
         if self.element_wise:
             freg = 0
             for j in range(self.dummy_input_dim):
                 ntk_input = ntk_input_all[j, :][None]
-                apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state)
+                apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state, ind_id)
                 # Use params_copy here to kill the gradient wrt params in NTK
                 ntk = custom_ntk.get_ntk(apply_fn_ntk, params_last)
 
-                y_ntk = self.apply_fn(params, state, rng_key, ntk_input)[0] - \
-                        self.apply_fn(params_last, state, rng_key, ntk_input)[0]
+                y_ntk = self.apply_fn(params, state, rng_key, ntk_input, ind_id)[0] - \
+                        self.apply_fn(params_last, state, rng_key, ntk_input, ind_id)[0]
                 for i in range(self.class_num):
                     ntk_ = ntk[:, i, :, i]
                     y_ntk_ = y_ntk[:, i][:, None]
@@ -165,8 +180,8 @@ class loss_cl_list:
             apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state)
             ntk = custom_ntk.get_ntk(apply_fn_ntk, params_last)
 
-            y_ntk = self.apply_fn(params, state, rng_key, ntk_input)[0] - \
-                    self.apply_fn(params_last, state, rng_key, ntk_input)[0]
+            y_ntk = self.apply_fn(params, state, rng_key, ntk_input, task_id - 1)[0] - \
+                    self.apply_fn(params_last, state, rng_key, ntk_input, task_id - 1)[0]
             freg = 0
             for i in range(self.class_num):
                 ntk_ = ntk[:, i, :, i]
@@ -187,10 +202,13 @@ class loss_cl_list:
                                rng_key: jnp.array,
                                x,
                                y,
+                               task_id,
                                ind_points,
+                               ind_id,
                                fisher
                                ):
-        f_hat = self.apply_fn(params, state, rng_key, x)[0]
+        task_id = jnp.ones(x.shape[0]) * task_id
+        f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
@@ -202,7 +220,7 @@ class loss_cl_list:
 
         def convert_to_ntk(apply_fn, inputs, state):
             def apply_fn_ntk(params):
-                return apply_fn(params, state, None, inputs)[0]
+                return apply_fn(params, state, None, inputs, task_id)[0]
             return apply_fn_ntk
 
         for params_last in params_list:
@@ -215,8 +233,8 @@ class loss_cl_list:
                     # Use params_copy here to kill the gradient wrt params in NTK
                     ntk = custom_ntk.get_ntk(apply_fn_ntk, params_last)
 
-                    y_ntk = self.apply_fn(params, state, rng_key, ntk_input)[0] - \
-                            self.apply_fn(params_last, state, rng_key, ntk_input)[0]
+                    y_ntk = self.apply_fn(params, state, rng_key, ntk_input, ind_id)[0] - \
+                            self.apply_fn(params_last, state, rng_key, ntk_input, ind_id)[0]
                     for i in range(self.class_num):
                         ntk_ = ntk[:, i, :, i]
                         y_ntk_ = y_ntk[:, i][:, None]
@@ -230,8 +248,8 @@ class loss_cl_list:
                 apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state)
                 ntk = custom_ntk.get_ntk(apply_fn_ntk, params_last)
 
-                y_ntk = self.apply_fn(params, state, rng_key, ntk_input)[0] - \
-                        self.apply_fn(params_last, state, rng_key, ntk_input)[0]
+                y_ntk = self.apply_fn(params, state, rng_key, ntk_input, ind_id)[0] - \
+                        self.apply_fn(params_last, state, rng_key, ntk_input, ind_id)[0]
                 freg = 0
                 for i in range(self.class_num):
                     ntk_ = ntk[:, i, :, i]

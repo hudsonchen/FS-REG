@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import argparse
 from typing import Tuple, List, Dict
 from jax.tree_util import tree_flatten, tree_unflatten, tree_map
-
+import tree
 
 def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets):
     acc = []
@@ -20,8 +20,9 @@ def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets):
     return acc
 
 
-def coreset_selection(x_coreset, y_coreset, x_train, y_train, coreset_method, coreset_size):
+def coreset_selection(x_coreset, y_coreset, x_train, y_train, task_id, coreset_method, coreset_size):
     # Select K centers from (x_train, y_train) and add to current coreset (x_coreset, y_coreset)
+    coreset_id = jnp.ones(coreset_size) * task_id
     if coreset_method == 'k_means':
         dists = np.full(x_train.shape[0], np.inf)
         current_id = 0
@@ -35,17 +36,13 @@ def coreset_selection(x_coreset, y_coreset, x_train, y_train, coreset_method, co
 
         x_coreset.append(x_train[idx, :])
         y_coreset.append(y_train[idx, :])
-        x_train = np.delete(x_train, idx, axis=0)
-        y_train = np.delete(y_train, idx, axis=0)
     elif coreset_method == 'random':
         idx = np.random.permutation(np.arange(x_train.shape[0]))[:coreset_size]
         x_coreset.append(x_train[idx, :])
         y_coreset.append(y_train[idx, :])
-        x_train = np.delete(x_train, idx, axis=0)
-        y_train = np.delete(y_train, idx, axis=0)
     else:
         raise NotImplementedError(coreset_method)
-    return x_coreset, y_coreset, x_train, y_train
+    return x_coreset, y_coreset, coreset_id
 
 
 def update_distance(dists, x_train, current_id):
@@ -60,30 +57,33 @@ def merge_coresets(x_coresets, y_coresets):
     for i in range(1, len(x_coresets)):
         merged_x = np.vstack((merged_x, x_coresets[i]))
         merged_y = np.vstack((merged_y, y_coresets[i]))
-    seq = np.random.permutation(np.arange(merged_x.shape[0]))
-    merged_x = merged_x[seq, :]
-    merged_y = merged_y[seq, :]
+    # seq = np.random.permutation(np.arange(merged_x.shape[0]))
+    # merged_x = merged_x[seq, :]
+    # merged_y = merged_y[seq, :]
     return merged_x, merged_y
 
 
-def ind_points_selection(coreset, batch, ind_size, ind_method):
+def ind_points_selection(coreset, coreset_id, batch, ind_size, ind_method):
     if ind_method == 'both':
         idx_coreset = np.random.permutation(np.arange(coreset.shape[0]))[:int(ind_size / 2)]
         ind_point_from_coreset = coreset[idx_coreset, :]
         idx_batch = np.random.permutation(np.arange(batch.shape[0]))[:int(ind_size / 2)]
         ind_point_from_batch = batch[idx_batch, :]
         ind_points = np.concatenate((ind_point_from_batch, ind_point_from_coreset), axis=0)
+        ind_id = None
     elif ind_method == 'core':
         idx_coreset = np.random.permutation(np.arange(coreset.shape[0]))[:int(ind_size)]
         ind_point_from_coreset = coreset[idx_coreset, :]
         ind_points = ind_point_from_coreset
+        ind_id = coreset_id[idx_coreset]
     elif ind_method == 'train':
         idx_batch = np.random.permutation(np.arange(batch.shape[0]))[:int(ind_size)]
         ind_point_from_batch = batch[idx_batch, :]
         ind_points = ind_point_from_batch
+        ind_id = None
     else:
         raise NotImplementedError(ind_method)
-    return ind_points
+    return ind_points, ind_id
 
 
 def process_args(args: argparse.Namespace) -> Dict:
@@ -115,3 +115,7 @@ def get_fisher(x_sample, y_sample, params, state, rng_key, llk_func):
         grads_square = tree_map(lambda p: p ** 2, grads)
         grads_sum = tree_map(lambda p, q: p + q, grads_square, grads_sum)
     return tree_map(lambda p: p / x_sample.shape[0], grads_sum)
+
+
+def zero_params(params):
+    return tree.map_structure(lambda p: p * 0, params)

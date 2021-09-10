@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 from jax import jit
 import haiku as hk
+import utils
 
 ACTIVATION_DICT = {"tanh": jnp.tanh, "relu": jax.nn.relu}
 
@@ -23,7 +24,8 @@ class MLP:
         self.rng_key = jax.random.PRNGKey(seed)
         self.head_style = head_style
 
-    def forward_fn(self, inputs: jnp.ndarray, task_id):
+    # Task ID is an array of size [batch_size, 1]
+    def forward_fn(self, inputs, task_id):
         out = inputs
         for unit in self.architecture:
             fully_connected = hk.Linear(unit)
@@ -33,5 +35,9 @@ class MLP:
         if self.head_style == 'single':
             out = fully_connected(out)
         elif self.head_style == 'multi':
-            out = fully_connected(out)[:, task_id]
+            out = fully_connected(out)
+            mask = utils.one_hot(task_id, self.output_dim)
+            out = jnp.sum(out * mask, axis=-1)[:, None]
+            out = jnp.concatenate((out, 1. - out), axis=1)
         return out
+

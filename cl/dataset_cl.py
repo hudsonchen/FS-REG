@@ -79,7 +79,7 @@ class SplitMnistGenerator:
 
     def get_dims(self):
         # Get data input and output dimensions
-        return self.X_train.shape[1], 2
+        return self.X_train.shape[0], self.X_train.shape[1], 2
 
     def next_task(self):
         if self.cur_iter >= self.max_iter:

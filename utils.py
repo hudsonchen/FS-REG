@@ -15,7 +15,7 @@ def sigma_transform(params_log_var):
 
 def one_hot(x, k, dtype=np.float32):
     """Create a one-hot encoding of x of size k."""
-    return np.array(x[:, None] == np.arange(k), dtype)
+    return jnp.array(x[:, None] == jnp.arange(k), dtype)
 
 
 def predicate_batchnorm(module_name, name, value):
