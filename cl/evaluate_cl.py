@@ -25,7 +25,15 @@ class Evaluate_cl:
         self.llk_dict = {}
         self.loss_value_dict = {}
 
-    def evaluate_per_epoch(self, x_train, y_train, params, params_last, params_list,
+        self.acc_dict_all = {'0': [],
+                             '1': [],
+                             '2': [],
+                             '3': [],
+                             '4': [],
+                             }
+
+    def evaluate_per_epoch(self, x_train, y_train, x_testsets, y_testsets, test_ids,
+                           params, params_last, params_list,
                            state, rng_key, ind_points, ind_id, fisher, task_id, batch_size):
         llk_ = 0
         loss_value_ = 0
@@ -41,6 +49,15 @@ class Evaluate_cl:
         loss_value_ /= (batch_idx + 1)
         self.loss_value_dict[f'{str(task_id)}'].append(loss_value_)
         self.llk_dict[f'{str(task_id)}'].append(llk_)
+
+        for i in range(len(x_testsets)):
+            x_test, y_test = x_testsets[i], y_testsets[i]
+            task_id = test_ids[i] * jnp.ones(x_test.shape[0])
+            pred = jax.nn.softmax(self.apply_fn(params, state, rng_key, x_test, task_id)[0], axis=1)
+            pred_y = jnp.argmax(pred, axis=1)
+            y = jnp.argmax(y_test, axis=1)
+            cur_acc = len(jnp.where((pred_y - y) == 0)[0]) * 1.0 / y.shape[0]
+            self.acc_dict_all[f'{str(i)}'].append(cur_acc)
         return 0
 
     def evaluate_per_task(self, test_ids, x_testsets, y_testsets, params, state, rng_key, batch_size):

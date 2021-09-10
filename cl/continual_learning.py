@@ -1,6 +1,10 @@
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
+os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+path = '/import/home/xzhoubi/hudson/function_map/cl'
+os.chdir(path)
+print(os.getcwd())
+import sys
+sys.path.append('..')
 import numpy as np
 import copy
 import jax
@@ -9,7 +13,6 @@ import matplotlib.pyplot as plt
 import jax.numpy as jnp
 from tqdm import tqdm
 import haiku as hk
-import loss_classification
 import argparse
 import optax
 import cl.evaluate_cl as evaluate_cl
@@ -27,6 +30,7 @@ import cl.loss_cl as loss_cl
 parser = argparse.ArgumentParser()
 parser.add_argument('--dataset', type=str, default='pmnist')
 parser.add_argument('--method', type=str, default='nothing')
+parser.add_argument('--reg_first', type=float, default='0.0')
 parser.add_argument('--reg', type=float, default='0.01')
 parser.add_argument('--dummy_num', type=int, default=40)
 parser.add_argument('--hidden_dim', type=int, default=100)
@@ -148,6 +152,8 @@ params_list = []
 test_ids = []
 coreset_ids = []
 
+print(f"Start Training for {args.epochs} epochs on {args.dataset}")
+
 for task_id in range(data_gen.max_iter):
     x_train, y_train, x_test, y_test = data_gen.next_task()
     x_testsets.append(x_test)
@@ -159,37 +165,54 @@ for task_id in range(data_gen.max_iter):
     coreset_ids.append(coreset_id)
     x_coresets_train, y_coresets_train = utils_cl.merge_coresets(x_coresets, y_coresets)
 
+    # Reset logging state
     Evaluate_cl.llk_dict[str(task_id)] = []
     Evaluate_cl.loss_value_dict[str(task_id)] = []
+    Evaluate_cl.acc_dict_all = {'0': [],
+                                '1': [],
+                                '2': [],
+                                '3': [],
+                                '4': [],
+                                '5': [],
+                                '6': [],
+                                '7': [],
+                                '8': [],
+                                '9': []}
+
+    # Reset Adam state
+    opt = optax.adam(args.lr)
+    opt_state = opt.init(params_init)
 
     if task_id == 0:
-        params_last = utils_cl.zero_params(params)
-        # batch_num = int(x_train.shape[0] / batch_size)
-        # for _ in tqdm(range(args.epochs)):
-        #     for batch_idx in range(batch_num):
-        #         rng_key, _ = jax.random.split(rng_key)
-        #         image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-        #         label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-        #         params, state, opt_state = update(params, state, opt_state, rng_key, image, label, task_id)
+        # params_last = utils_cl.zero_params(params)
+
+        batch_num = int(x_train.shape[0] / batch_size)
+        for _ in tqdm(range(args.epochs)):
+            for batch_idx in range(batch_num):
+                rng_key, _ = jax.random.split(rng_key)
+                image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
+                label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
+                params, state, opt_state = update(params, state, opt_state, rng_key, image, label, task_id)
     else:
         params_last = params
 
-    batch_num = int(x_train.shape[0] / batch_size)
-    for _ in tqdm(range(args.epochs)):
-        for batch_idx in range(batch_num):
-            rng_key, _ = jax.random.split(rng_key)
-            image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-            label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-            ind_points, ind_id = utils_cl.ind_points_selection(x_coresets_train, coreset_id, image,
-                                                               args.dummy_num, args.ind_method)
-            params, state, opt_state = update_cl(params, params_last, params_list, state,
-                                                 opt_state, rng_key, image, label, task_id, ind_points, ind_id,
-                                                 fisher)
+        batch_num = int(x_train.shape[0] / batch_size)
+        for _ in tqdm(range(args.epochs)):
+            for batch_idx in range(batch_num):
+                rng_key, _ = jax.random.split(rng_key)
+                image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
+                label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
+                ind_points, ind_id = utils_cl.ind_points_selection(x_coresets_train, coreset_id, image,
+                                                                   args.dummy_num, args.ind_method)
+                params, state, opt_state = update_cl(params, params_last, params_list, state,
+                                                     opt_state, rng_key, image, label, task_id, ind_points, ind_id,
+                                                     fisher)
 
-        Evaluate_cl.evaluate_per_epoch(x_train, y_train, params, params_last, params_list,
-                                       state, rng_key, ind_points, ind_id, fisher,
-                                       task_id=task_id,
-                                       batch_size=1000)
+            Evaluate_cl.evaluate_per_epoch(x_train, y_train, x_testsets, y_testsets, test_ids,
+                                           params, params_last, params_list,
+                                           state, rng_key, ind_points, ind_id, fisher,
+                                           task_id=task_id,
+                                           batch_size=1000)
 
     # Put params in list, put preds in list, put id in list
     params_list.append(params)
@@ -202,6 +225,13 @@ for task_id in range(data_gen.max_iter):
         ax_loss_value.plot(np.arange(args.epochs), np.array(Evaluate_cl.loss_value_dict[str(task_id)]), label='Loss')
         ax_llk.set_title(f"LLK on Task #{task_id}")
         ax_loss_value.set_title(f"Loss on Task #{task_id}")
+        plt.show()
+
+        fig = plt.figure(figsize=(15, 10))
+        ax_all = fig.subplots(2, 5).flatten()
+        for i in range(len(x_testsets)):
+            ax_all[i].plot(np.arange(args.epochs), np.array(Evaluate_cl.acc_dict_all[f'{str(i)}']))
+            ax_all[i].set_title(f"Acc on Task #{i}")
         plt.show()
 
     # Train on coreset

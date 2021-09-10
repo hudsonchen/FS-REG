@@ -6,7 +6,6 @@ path = '/import/home/xzhoubi/hudson/function_map/mlp_mixer'
 os.chdir(path)
 print(os.getcwd())
 import sys
-
 sys.path.append('..')
 import jax
 import flax
