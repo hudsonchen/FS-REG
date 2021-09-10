@@ -48,7 +48,28 @@ class loss_cl_list:
         return -log_likelihood, state
 
     @partial(jit, static_argnums=(0,))
-    def weight_l2_norm_loss(self,
+    def weight_l2_norm_loss_without_fisher(self,
+                            params: hk.Params,
+                            params_last: hk.Params,
+                            params_list,
+                            state: hk.State,
+                            rng_key: jnp.array,
+                            x,
+                            y,
+                            ind_points,
+                            fisher
+                            ):
+        f_hat = self.apply_fn(params, state, rng_key, x)[0]
+        y_hat = jax.nn.softmax(f_hat, axis=1)
+        log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
+        params_not_batchnorm = hk.data_structures.filter(utils.predicate_batchnorm, params)
+        params_not_batchnorm_last = hk.data_structures.filter(utils.predicate_batchnorm, params_last)
+        params_difference = tree_map(lambda p, q: p - q + eps, params_not_batchnorm, params_not_batchnorm_last)
+        reg = self.regularization * jnp.square(optimizers.l2_norm(params_difference))
+        return -log_likelihood + reg, state
+
+    @partial(jit, static_argnums=(0,))
+    def weight_l2_norm_loss_with_fisher(self,
                             params: hk.Params,
                             params_last: hk.Params,
                             params_list,

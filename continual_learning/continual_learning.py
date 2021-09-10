@@ -6,17 +6,17 @@ import jax
 from jax import jit
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
-import dataset
-import network
 from tqdm import tqdm
 import haiku as hk
 import loss_classification
 import argparse
 import optax
-from typing import Tuple, Callable, List
-import utils_cl
-import loss_cl
 import utils_logging
+
+import continual_learning.network_cl as network_cl
+import continual_learning.dataset_cl as dataset_cl
+import continual_learning.utils_cl as utils_cl
+import continual_learning.loss_cl as loss_cl
 
 # from jax import config
 # config.update('jax_disable_jit', True)
@@ -47,13 +47,14 @@ kwargs = utils_cl.process_args(args)
 # Load Data
 class_num = 10
 num_tasks = 10
-data_gen = dataset.PermutedMnistGenerator(num_tasks)
+data_gen = dataset_cl.PermutedMnistGenerator(num_tasks)
 
 train_size, in_dim, out_dim = data_gen.get_dims()
 
 # Load MLP
-model = network.MLP(output_dim=class_num,
-                    architecture=[100, 100])
+model = network_cl.MLP(output_dim=class_num,
+                       architecture=[100, 100],
+                       head_style=args.head_style)
 init_fn, apply_fn = hk.transform_with_state(model.forward_fn)
 x_init = jnp.ones([1, in_dim])
 rng_key = jax.random.PRNGKey(0)
@@ -78,8 +79,10 @@ loss_cl_list = loss_cl.loss_cl_list(apply_fn=apply_fn,
                                     element_wise=args.element_wise)
 if args.method == 'nothing':
     loss_fun_cl = jax.jit(loss_cl_list.llk_classification)
-elif args.method == 'weight_l2':
-    loss_fun_cl = jax.jit(loss_cl_list.weight_l2_norm_loss)
+elif args.method == 'weight_l2_with_fisher':
+    loss_fun_cl = jax.jit(loss_cl_list.weight_l2_norm_loss_with_fisher)
+elif args.method == 'weight_l2_without_fisher':
+    loss_fun_cl = jax.jit(loss_cl_list.weight_l2_norm_loss_without_fisher)
 elif args.method == 'function_l2':
     loss_fun_cl = jax.jit(loss_cl_list.f_l2_norm_loss)
 elif args.method == 'ntk_norm':
@@ -220,7 +223,7 @@ for task_id in range(data_gen.max_iter):
     print(f"All Accuracy list: {acc_list}")
     print(f"Mean Accuracy: {acc}")
 
-    if args.method == 'weight_l2':
+    if args.method == 'weight_l2_with_fisher':
         x_sample = x_train[:200, :]
         y_sample = y_train[:200, :]
         fisher = utils_cl.get_fisher(x_sample, y_sample, params, state, rng_key, llk_func=loss_classification_list.llk_classification)

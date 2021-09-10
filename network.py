@@ -6,8 +6,6 @@ from jax import jit
 import haiku as hk
 
 ACTIVATION_DICT = {"tanh": jnp.tanh, "relu": jax.nn.relu}
-uniform_init_minval = 0
-uniform_init_maxval = 1
 
 
 class MLP:

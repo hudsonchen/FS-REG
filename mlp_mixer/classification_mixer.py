@@ -1,9 +1,12 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3, 4, 5, 6"
-# path = '/import/home/xzhoubi/hudson/function_map'
-# os.chdir(path)
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "1, 2, 3, 4, 5, 6, 7, 8"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION=.XX"] = "0.95"
+path = '/import/home/xzhoubi/hudson/function_map/mlp_mixer'
+os.chdir(path)
 print(os.getcwd())
 import sys
+
 sys.path.append('..')
 import jax
 import flax
@@ -14,9 +17,11 @@ import argparse
 from tqdm import tqdm
 import dataset
 import mlp_mixer.MLP_mixer_mod as MLP_mixer_mod
+import mlp_mixer.loss_mixer as loss_mixer
 import mlp_mixer.checkpoint as checkpoint
 from mlp_mixer.utils_logging_pmap import Evaluate
 import utils
+import mlp_mixer.utils_mixer as utils_mixer
 
 # config.update('jax_disable_jit', True)
 
@@ -24,7 +29,7 @@ import utils
 parser = argparse.ArgumentParser()
 parser.add_argument('--method', type=str, default='map')
 parser.add_argument('--reg', type=float, default='0.01')
-parser.add_argument('--dummy_num', type=int, default=10)
+parser.add_argument('--dummy_input_dim', type=int, default=10)
 parser.add_argument('--inverse', action="store_true", default=False)
 parser.add_argument('--optimizer', type=str, default='none')
 parser.add_argument('--dataset', type=str, default='none')
@@ -36,18 +41,19 @@ parser.add_argument('--lr_decay', type=float, default=0.5)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=200)
+parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results/mlp_mixer")
+parser.add_argument('--save', action="store_true", default=False)
 args = parser.parse_args()
-kwargs = {}
+kwargs = utils_mixer.process_args(args)
 
 # Useful Global Variables
-rng_key = jax.random.PRNGKey(0)
+rng_key = jax.random.PRNGKey(args.seed)
 eps = 1e-6
-class_num = 10
 
 # Hyperparameter
 regularization = args.reg
 element_wise = args.element_wise
-dummy_input_dim = args.dummy_num
+dummy_input_dim = args.dummy_input_dim
 inverse = args.inverse
 epochs = args.epochs
 n_devices = jax.local_device_count()
@@ -82,7 +88,9 @@ init_state, init_params = net.init(rng_key, x_init).pop('params')
 
 pretrained_path = '/home/xzhoubi/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
 params = checkpoint.load_pretrained(pretrained_path, init_params)
+del init_params
 state = init_state
+
 
 # Optimizer Initialization
 def schedule_fn(learning_rate, n_batches):
@@ -102,10 +110,10 @@ elif args.optimizer == "sgd":
     schedule_fn_final = schedule_fn(args.lr, len(train_loader))
     momentum = 0.9
     opt = optax.chain(
-            optax.trace(decay=momentum, nesterov=False),
-            optax.scale_by_schedule(schedule_fn_final),
-            optax.scale(-1),
-        )
+        optax.trace(decay=momentum, nesterov=False),
+        optax.scale_by_schedule(schedule_fn_final),
+        optax.scale(-1),
+    )
 else:
     raise NotImplementedError(args.optimizer)
 opt_state = opt.init(params)
@@ -113,22 +121,35 @@ opt_state = opt.init(params)
 # Replicate to Multiple GPU
 params = flax.jax_utils.replicate(params)
 opt_state = flax.jax_utils.replicate(opt_state)
+# rng_key = flax.jax_utils.replicate(rng_key)
 
-
-def loss_fun(params, x, y):
-    y_hat = jax.nn.softmax(net.apply({'params': params, **state}, x, mutable=list(state.keys()))[0], axis=1)
-    log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
-    return -log_likelihood
+loss_classification_list = loss_mixer.loss_classification_list(apply_fn=net.apply,
+                                                               regularization=args.reg,
+                                                               dummy_input_dim=args.dummy_input_dim,
+                                                               class_num=num_classes,
+                                                               inverse=args.inverse,
+                                                               element_wise=args.element_wise)
+if args.method == 'map' or args.method == 'map_no_wd':
+    loss_fun = loss_classification_list.map_loss
+elif args.method == 'ntk_norm':
+    loss_fun = loss_classification_list.ntk_norm_loss
+elif args.method == 'jac_norm':
+    loss_fun = loss_classification_list.jac_norm_loss
+elif args.method == 'f_norm':
+    loss_fun = loss_classification_list.f_norm_loss
+else:
+    raise NotImplementedError(args.method)
 
 
 @jit
 def update(params,
-           opt_state: optax.OptState,
+           opt_state,
+           rng_key,
            x,
            y,
            ):
     """Learning rule (stochastic gradient descent)."""
-    loss_value, grads = jax.value_and_grad(loss_fun, argnums=0)(params, x, y)
+    loss_value, grads = jax.value_and_grad(loss_fun, argnums=0)(params, params, rng_key, x, y)
     grads = jax.lax.pmean(grads, axis_name='num_devices')
     loss_value = jax.lax.pmean(loss_value, axis_name='num_devices')
     updates, opt_state = opt.update(grads, opt_state)
@@ -150,11 +171,12 @@ for epoch in range(epochs):
         image, label = utils.tensor2array(image, label, num_classes)
         image = utils.split(image, n_devices)
         label = utils.split(label, n_devices)
-        loss_value, params, opt_state = update(params, opt_state, image, label)
+        _, rng_key = jax.random.split(rng_key)
+        rng_key_multi = flax.jax_utils.replicate(rng_key)
+        loss_value, params, opt_state = update(params, opt_state, rng_key_multi, image, label)
 
         if batch_idx % 100 == 0:
             print('loss value', loss_value.mean())
-
 
     metric_train = Evaluate.evaluate(train_loader,
                                      params,
@@ -170,4 +192,11 @@ for epoch in range(epochs):
     print(f"Epoch:{epoch} Train Acc:{metric_train['acc']:2f}% Test Acc:{metric_test['acc']:2f}%")
     print(f"Epoch:{epoch} Train LLK:{metric_train['llk']:2f} Test LLK:{metric_test['llk']:2f}")
 
+    if args.save:
+        Evaluate.save_log(epoch, metric_train, metric_test)
+        # Evaluate.save_params(epoch, params, state)
 
+if args.save:
+    save_path = kwargs["save_path"]
+    print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
+    os.rename(save_path, f"{save_path}__complete")

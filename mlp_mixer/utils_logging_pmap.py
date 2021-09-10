@@ -64,28 +64,20 @@ class Evaluate:
         with open(file_name, 'a') as metrics_file:
             metrics_header = [
                 'Epoch',
-                'Train Loss',
                 'Train LLK',
                 'Train Acc',
-                'Train ECE',
-                'Test Loss',
                 'Test LLK',
                 'Test Acc',
-                'Test ECE',
             ]
             writer = csv.DictWriter(metrics_file, fieldnames=metrics_header)
             if os.stat(file_name).st_size == 0:
                 writer.writeheader()
             writer.writerow({
                 'Epoch': epoch,
-                'Train Loss': metric_train['loss'],
                 'Train LLK': metric_train['llk'],
                 'Train Acc': metric_train['acc'],
-                'Train ECE': metric_train['ece'],
-                'Test Loss': metric_test['loss'],
                 'Test LLK': metric_test['llk'],
                 'Test Acc': metric_test['acc'],
-                'Test ECE': metric_test['ece'],
             })
             metrics_file.close()
 
