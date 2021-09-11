@@ -20,20 +20,19 @@ def get_scores(params, state, apply_fn, rng_key, x_testsets, y_testsets):
     return acc
 
 
-def coreset_selection(x_coreset, y_coreset, x_train, y_train, task_id, coreset_method, coreset_size):
+def coreset_selection(x_coreset, y_coreset, coreset_ids, x_train, y_train, task_id, coreset_method, coreset_size):
     # Select K centers from (x_train, y_train) and add to current coreset (x_coreset, y_coreset)
     coreset_id = jnp.ones(coreset_size) * task_id
+    coreset_ids.append(coreset_id)
     if coreset_method == 'k_means':
         dists = np.full(x_train.shape[0], np.inf)
         current_id = 0
         dists = update_distance(dists, x_train, current_id)
         idx = [current_id]
-
         for i in range(1, coreset_size):
             current_id = np.argmax(dists)
             dists = update_distance(dists, x_train, current_id)
             idx.append(current_id)
-
         x_coreset.append(x_train[idx, :])
         y_coreset.append(y_train[idx, :])
     elif coreset_method == 'random':
@@ -42,7 +41,7 @@ def coreset_selection(x_coreset, y_coreset, x_train, y_train, task_id, coreset_m
         y_coreset.append(y_train[idx, :])
     else:
         raise NotImplementedError(coreset_method)
-    return x_coreset, y_coreset, coreset_id
+    return x_coreset, y_coreset, coreset_ids
 
 
 def update_distance(dists, x_train, current_id):
@@ -52,25 +51,29 @@ def update_distance(dists, x_train, current_id):
     return dists
 
 
-def merge_coresets(x_coresets, y_coresets):
+def merge_coresets(x_coresets, y_coresets, coreset_ids):
     merged_x, merged_y = x_coresets[0], y_coresets[0]
     for i in range(1, len(x_coresets)):
         merged_x = np.vstack((merged_x, x_coresets[i]))
         merged_y = np.vstack((merged_y, y_coresets[i]))
+    merged_id = np.concatenate(coreset_ids, axis=0)
     # seq = np.random.permutation(np.arange(merged_x.shape[0]))
     # merged_x = merged_x[seq, :]
     # merged_y = merged_y[seq, :]
-    return merged_x, merged_y
+    return merged_x, merged_y, merged_id
 
 
-def ind_points_selection(coreset, coreset_id, batch, ind_size, ind_method):
+def ind_points_selection(coreset, coreset_id, task_id, batch, ind_size, ind_method):
     if ind_method == 'both':
         idx_coreset = np.random.permutation(np.arange(coreset.shape[0]))[:int(ind_size / 2)]
         ind_point_from_coreset = coreset[idx_coreset, :]
+        ind_id_from_coreset = coreset_id[idx_coreset]
         idx_batch = np.random.permutation(np.arange(batch.shape[0]))[:int(ind_size / 2)]
         ind_point_from_batch = batch[idx_batch, :]
+        ind_id_from_batch = jnp.ones(batch.shape[0]) * task_id
+
         ind_points = np.concatenate((ind_point_from_batch, ind_point_from_coreset), axis=0)
-        ind_id = None
+        ind_id = jnp.concatenate((ind_id_from_batch, ind_id_from_coreset), axis=0)
     elif ind_method == 'core':
         idx_coreset = np.random.permutation(np.arange(coreset.shape[0]))[:int(ind_size)]
         ind_point_from_coreset = coreset[idx_coreset, :]
@@ -80,7 +83,7 @@ def ind_points_selection(coreset, coreset_id, batch, ind_size, ind_method):
         idx_batch = np.random.permutation(np.arange(batch.shape[0]))[:int(ind_size)]
         ind_point_from_batch = batch[idx_batch, :]
         ind_points = ind_point_from_batch
-        ind_id = None
+        ind_id = jnp.ones(ind_points.shape[0]) * task_id
     else:
         raise NotImplementedError(ind_method)
     return ind_points, ind_id

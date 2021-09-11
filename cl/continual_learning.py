@@ -33,12 +33,14 @@ parser.add_argument('--method', type=str, default='nothing')
 parser.add_argument('--reg_first', type=float, default='0.0')
 parser.add_argument('--reg', type=float, default='0.01')
 parser.add_argument('--dummy_num', type=int, default=40)
+parser.add_argument('--bs', type=int, default=200)
 parser.add_argument('--hidden_dim', type=int, default=100)
 parser.add_argument('--ind_method', type=str, default='core')
 parser.add_argument('--inverse', action="store_true", default=False)
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--data_augmentation', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--epochs_first', type=int, default=10)
 parser.add_argument('--coreset_size', type=int, default=200)
 parser.add_argument('--coreset_method', type=str, default='random')
 parser.add_argument('--head_style', type=str, default='single')
@@ -68,9 +70,9 @@ model = network_cl.MLP(output_dim=class_num,
                        architecture=[args.hidden_dim, args.hidden_dim],
                        head_style=args.head_style)
 init_fn, apply_fn = hk.transform_with_state(model.forward_fn)
-x_init = jnp.ones([10, in_dim])
+x_init = jnp.ones([1, in_dim])
 rng_key = jax.random.PRNGKey(0)
-params_init, state = init_fn(rng_key, x_init, task_id=jnp.zeros(10))
+params_init, state = init_fn(rng_key, x_init, task_id=jnp.zeros(1))
 params = params_init
 
 # Continual Learning Loss function
@@ -100,7 +102,7 @@ opt = optax.adam(args.lr)
 opt_state = opt.init(params_init)
 
 # Hyperparameter
-batch_size = 128
+batch_size = args.bs
 
 
 @jit
@@ -160,12 +162,7 @@ for task_id in range(data_gen.max_iter):
     y_testsets.append(y_test)
     test_ids.append(task_id)
 
-    x_coresets, y_coresets, coreset_id = utils_cl.coreset_selection(x_coresets, y_coresets, x_train, y_train, task_id,
-                                                                    args.coreset_method, args.coreset_size)
-    coreset_ids.append(coreset_id)
-    x_coresets_train, y_coresets_train = utils_cl.merge_coresets(x_coresets, y_coresets)
-
-    # Reset logging state
+    # Reset logging state for debugging
     Evaluate_cl.llk_dict[str(task_id)] = []
     Evaluate_cl.loss_value_dict[str(task_id)] = []
     Evaluate_cl.acc_dict_all = {'0': [],
@@ -179,15 +176,9 @@ for task_id in range(data_gen.max_iter):
                                 '8': [],
                                 '9': []}
 
-    # Reset Adam state
-    opt = optax.adam(args.lr)
-    opt_state = opt.init(params_init)
-
     if task_id == 0:
-        # params_last = utils_cl.zero_params(params)
-
         batch_num = int(x_train.shape[0] / batch_size)
-        for _ in tqdm(range(args.epochs)):
+        for _ in tqdm(range(args.epochs_first)):
             for batch_idx in range(batch_num):
                 rng_key, _ = jax.random.split(rng_key)
                 image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
@@ -195,14 +186,13 @@ for task_id in range(data_gen.max_iter):
                 params, state, opt_state = update(params, state, opt_state, rng_key, image, label, task_id)
     else:
         params_last = params
-
         batch_num = int(x_train.shape[0] / batch_size)
         for _ in tqdm(range(args.epochs)):
             for batch_idx in range(batch_num):
                 rng_key, _ = jax.random.split(rng_key)
                 image = x_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
                 label = y_train[batch_idx * batch_size:(batch_idx + 1) * batch_size, :]
-                ind_points, ind_id = utils_cl.ind_points_selection(x_coresets_train, coreset_id, image,
+                ind_points, ind_id = utils_cl.ind_points_selection(x_coresets_train, coreset_ids_train, task_id, image,
                                                                    args.dummy_num, args.ind_method)
                 params, state, opt_state = update_cl(params, params_last, params_list, state,
                                                      opt_state, rng_key, image, label, task_id, ind_points, ind_id,
@@ -213,6 +203,11 @@ for task_id in range(data_gen.max_iter):
                                            state, rng_key, ind_points, ind_id, fisher,
                                            task_id=task_id,
                                            batch_size=1000)
+    # Generate Coreset
+    x_coresets, y_coresets, coreset_ids = utils_cl.coreset_selection(x_coresets, y_coresets, coreset_ids, x_train,
+                                                                     y_train, task_id,
+                                                                     args.coreset_method, args.coreset_size)
+    x_coresets_train, y_coresets_train, coreset_ids_train = utils_cl.merge_coresets(x_coresets, y_coresets, coreset_ids)
 
     # Put params in list, put preds in list, put id in list
     params_list.append(params)
@@ -240,21 +235,22 @@ for task_id in range(data_gen.max_iter):
     opt_state_eval = copy.deepcopy(opt_state)
 
     if args.train_on_coreset and task_id > 0:
-        core_set_batch_size = args.coreset_size
+        coreset_batch_size = args.coreset_size
         for _ in range(args.epochs):
-            for batch_idx in range(int(x_coresets_train.shape[0] / core_set_batch_size)):
+            for batch_idx in range(int(x_coresets_train.shape[0] / coreset_batch_size)):
                 rng_key, _ = jax.random.split(rng_key)
-                image = x_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
-                label = y_coresets_train[batch_idx * core_set_batch_size:(batch_idx + 1) * core_set_batch_size, :]
+                image = x_coresets_train[batch_idx * coreset_batch_size:(batch_idx + 1) * coreset_batch_size, :]
+                label = y_coresets_train[batch_idx * coreset_batch_size:(batch_idx + 1) * coreset_batch_size, :]
 
                 # Sample inducing points
                 idx_batch = np.random.permutation(np.arange(image.shape[0]))[:args.dummy_num]
                 ind_points = image[idx_batch, :]
+                # ind_id = jnp.ones(ind_points.shape[0]) *
 
                 params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, params_list, state_eval,
                                                                     opt_state_eval,
                                                                     rng_key, image, label, task_id,
-                                                                    ind_points, fisher)
+                                                                    ind_points, ind_id, fisher)
 
     acc_list, acc = Evaluate_cl.evaluate_per_task(test_ids,
                                                   x_testsets,
@@ -277,3 +273,8 @@ for task_id in range(data_gen.max_iter):
     if args.save:
         Evaluate_cl.save_log(task_id, acc)
         Evaluate_cl.save_params(task_id, params, state)
+
+if args.save:
+    save_path = kwargs["save_path"]
+    print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
+    os.rename(save_path, f"{save_path}__complete")

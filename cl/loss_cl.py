@@ -121,8 +121,8 @@ class loss_cl_list:
         y_hat = jax.nn.softmax(f_hat, axis=1)
         log_likelihood = jnp.mean(jnp.sum((jnp.log(y_hat + eps)) * y, axis=1), axis=0)
 
-        f_ind_hat_old = self.apply_fn(params_last, state, rng_key, ind_points)[0]
-        f_ind_hat_new = self.apply_fn(params, state, rng_key, ind_points)[0]
+        f_ind_hat_old = self.apply_fn(params_last, state, rng_key, ind_points, ind_id)[0]
+        f_ind_hat_new = self.apply_fn(params, state, rng_key, ind_points, ind_id)[0]
         # f is of shape (batch_size, class_num)
         f_norm = jnp.sqrt(((f_ind_hat_new - f_ind_hat_old) ** 2).sum(1) + eps).mean() ** 2
         return -log_likelihood + self.regularization * f_norm, state
@@ -161,6 +161,7 @@ class loss_cl_list:
             freg = 0
             for j in range(self.dummy_input_dim):
                 ntk_input = ntk_input_all[j, :][None]
+                ind_id = ind_id[j][None]
                 apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state, ind_id)
                 # Use params_copy here to kill the gradient wrt params in NTK
                 ntk = custom_ntk.get_ntk(apply_fn_ntk, params_last)
