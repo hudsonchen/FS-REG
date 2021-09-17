@@ -32,6 +32,6 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda:/usr/local/cuda/lib64:/u
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
 # Execute applications in parallel
-srun -n 2 --gres=gpu:1 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/classification.py --dataset cifar10 --optimizer sgd --architecture resnet18 --lr 0.01 --method map --reg 0.0005 --epochs 10 --batch_size 200 --train_size 1000 --aug --lr_decay 0.7 --seed 1   # Assign 2 CPU cores and 1 GPU device to run application "myapp1"
-srun -n 2 --gres=gpu:1 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/classification.py --dataset cifar10 --optimizer sgd --architecture resnet18 --lr 0.01 --method map --reg 0.0005 --epochs 10 --batch_size 200 --train_size 1000 --aug --lr_decay 0.7 --seed 1     # Similarly, assign 2 CPU cores and 1 GPU device to run application "myapp2"
+srun -p gpu3090 -n 2 --gres=gpu:1 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/classification.py --dataset cifar10 --optimizer sgd --architecture resnet18 --lr 0.01 --method map --reg 0.0005 --epochs 10 --batch_size 200 --train_size 1000 --aug --lr_decay 0.7 --seed 1   # Assign 2 CPU cores and 1 GPU device to run application "myapp1"
+srun -p gpu3090 -n 2 --gres=gpu:1 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/classification.py --dataset cifar10 --optimizer sgd --architecture resnet18 --lr 0.01 --method map --reg 0.0005 --epochs 10 --batch_size 200 --train_size 1000 --aug --lr_decay 0.7 --seed 1     # Similarly, assign 2 CPU cores and 1 GPU device to run application "myapp2"
 wait
