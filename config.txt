@@ -25,6 +25,8 @@
 # Setup runtime environment if necessary
 # or you can source ~/.bashrc or ~/.bash_profile
 
+export XLA_PYTHON_CLIENT_PREALLOCATE="false"
+
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
 # Execute applications in parallel
