@@ -17,7 +17,7 @@
 ##SBATCH --mail-type=end
 
 # Choose partition (queue) "gpu" or "gpu-share"
-#SBATCH -p gpu-share
+#SBATCH -p gpu
 
 export XLA_PYTHON_CLIENT_PREALLOCATE="false"
 
