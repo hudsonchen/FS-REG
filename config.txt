@@ -27,6 +27,7 @@
 
 export XLA_PYTHON_CLIENT_PREALLOCATE="false"
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-10.2:/usr/local/cuda-10.2/lib64:/usr/local/cuda-10.2/include
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/include
 
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
