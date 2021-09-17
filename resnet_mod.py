@@ -146,15 +146,6 @@ def check_length(length, value, name):
 class ResNet(hk.Module):
     """ResNet model."""
 
-    CONFIGS = {
-        18: {
-            "blocks_per_group": (2, 2, 2, 2),
-            "bottleneck": False,
-            "channels_per_group": (64, 128, 256, 512),
-            "use_projection": (True, True, True, True),
-        },
-    }
-
     BlockGroup = BlockGroup  # pylint: disable=invalid-name
     BlockV1 = BlockV1  # pylint: disable=invalid-name
 
@@ -163,6 +154,7 @@ class ResNet(hk.Module):
             blocks_per_group: Sequence[int],
             num_classes: int,
             use_bn: bool,
+            resnet_v1: bool = False,
             bn_config: Optional[Mapping[str, FloatStrOrBool]] = None,
             resnet_v2: bool = False,
             bottleneck: bool = True,
@@ -195,6 +187,7 @@ class ResNet(hk.Module):
     """
         super().__init__(name=name)
         self.resnet_v2 = resnet_v2
+        self.resnet_v1 = resnet_v1
         self.use_bn = use_bn
 
         bn_config = dict(bn_config or {})
@@ -213,10 +206,14 @@ class ResNet(hk.Module):
 
         initial_conv_config = dict(initial_conv_config or {})
         initial_conv_config.setdefault("output_channels", 64)
-        initial_conv_config.setdefault("kernel_shape", 3)
-        initial_conv_config.setdefault("stride", 1)
-        # initial_conv_config.setdefault("kernel_shape", 7)
-        # initial_conv_config.setdefault("stride", 2)
+
+        if resnet_v1:
+            initial_conv_config.setdefault("kernel_shape", 7)
+            initial_conv_config.setdefault("stride", 2)
+        else:
+            initial_conv_config.setdefault("kernel_shape", 3)
+            initial_conv_config.setdefault("stride", 1)
+
         initial_conv_config.setdefault("with_bias", False)
         initial_conv_config.setdefault("padding", "SAME")
         initial_conv_config.setdefault("name", "initial_conv")
@@ -247,10 +244,11 @@ class ResNet(hk.Module):
     def __call__(self, inputs, is_training, test_local_stats=False):
         out = inputs
         out = self.initial_conv(out)
-        # out = hk.max_pool(out,
-        #                   window_shape=(1, 3, 3, 1),
-        #                   strides=(1, 2, 2, 1),
-        #                   padding="SAME")
+        if self.resnet_v1:
+            out = hk.max_pool(out,
+                              window_shape=(1, 3, 3, 1),
+                              strides=(1, 2, 2, 1),
+                              padding="SAME")
 
         for block_group in self.block_groups:
             out = block_group(out, is_training, test_local_stats)
@@ -268,6 +266,7 @@ class ResNet18(ResNet):
             num_classes: int,
             use_bn: bool,
             bn_config: Optional[Mapping[str, FloatStrOrBool]] = None,
+            resnet_v1: bool = False,
             resnet_v2: bool = False,
             logits_config: Optional[Mapping[str, Any]] = None,
             name: Optional[str] = None,
@@ -285,13 +284,32 @@ class ResNet18(ResNet):
       initial_conv_config: Keyword arguments passed to the constructor of the
         initial :class:`~haiku.Conv2D` module.
     """
+        if resnet_v1:
+            CONFIGS = {
+                18: {
+                    "blocks_per_group": (2, 2, 2, 2),
+                    "bottleneck": False,
+                    "channels_per_group": (64, 128, 256, 512),
+                    "use_projection": (False, True, True, True),
+                },
+            }
+        else:
+            CONFIGS = {
+                18: {
+                    "blocks_per_group": (2, 2, 2, 2),
+                    "bottleneck": False,
+                    "channels_per_group": (64, 128, 256, 512),
+                    "use_projection": (True, True, True, True),
+                },
+            }
         super().__init__(num_classes=num_classes,
                          use_bn=use_bn,
                          bn_config=bn_config,
                          initial_conv_config=initial_conv_config,
+                         resnet_v1=resnet_v1,
                          resnet_v2=resnet_v2,
                          logits_config=logits_config,
                          name=name,
-                         **ResNet.CONFIGS[18])
+                         **CONFIGS[18])
 
 

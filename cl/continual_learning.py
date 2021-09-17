@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "4"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 path = '/import/home/xzhoubi/hudson/function_map/cl'
 os.chdir(path)
 print(os.getcwd())
@@ -245,7 +245,7 @@ for task_id in range(data_gen.max_iter):
                 # Sample inducing points
                 idx_batch = np.random.permutation(np.arange(image.shape[0]))[:args.dummy_num]
                 ind_points = image[idx_batch, :]
-                # ind_id = jnp.ones(ind_points.shape[0]) *
+                ind_id = jnp.ones(ind_points.shape[0])
 
                 params_eval, state_eval, opt_state_eval = update_cl(params_eval, params, params_list, state_eval,
                                                                     opt_state_eval,

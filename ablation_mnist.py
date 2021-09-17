@@ -14,10 +14,11 @@ import network
 import utils
 import utils_logging
 import resnet_mod
-
+from jax.experimental import optimizers
+import custom_ntk
+import matplotlib.pyplot as plt
 # from jax import config
 # config.update('jax_disable_jit', True)
-
 
 
 # Args
@@ -44,7 +45,6 @@ parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 args = parser.parse_args()
 kwargs = utils.process_args(args)
-
 
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.4"
@@ -117,10 +117,10 @@ elif args.optimizer == "sgd":
     schedule_fn_final = schedule_fn(args.lr, len(train_loader))
     momentum = 0.9
     opt = optax.chain(
-            optax.trace(decay=momentum, nesterov=False),
-            optax.scale_by_schedule(schedule_fn_final),
-            optax.scale(-1),
-        )
+        optax.trace(decay=momentum, nesterov=False),
+        optax.scale_by_schedule(schedule_fn_final),
+        optax.scale(-1),
+    )
 else:
     raise NotImplementedError
 
@@ -163,6 +163,61 @@ else:
     raise NotImplementedError(args.method)
 llk_classification = loss_classification_list.llk_classification
 
+
+@jit
+def get_map_norm(params, state, x):
+    return jnp.square(optimizers.l2_norm(params))
+
+
+@jit
+def get_jac_norm(params, state, x):
+    def convert_apply(apply_fn, inputs, params, state):
+        def apply_fn_(inputs):
+            return apply_fn(params, state, None, inputs)[0]
+
+        return apply_fn_
+
+    apply_fn_jacobian = convert_apply(apply_fn, x, params, state)
+    J = jax.jacrev(apply_fn_jacobian)(x)
+    # J is of shape (batch_size, class_num, batch_size, 32, 32, 1)
+    jac_norm = jnp.sqrt(jnp.sum(J ** 2, axis=(1, 3, 4, 5)) + eps)
+    jac_norm = jnp.diag(jac_norm).mean() ** 2
+    return jac_norm
+
+
+@jit
+def get_f_norm(params, state, x):
+    f = apply_fn(params, state, rng_key, x)[0]
+    # f is of shape (batch_size, class_num)
+    f_norm = jnp.sqrt((f ** 2).sum(1) + eps).mean()
+    f_norm = f_norm ** 2
+    return f_norm
+
+
+@jit
+def get_ntk_norm(params, state, x):
+    ntk_input_all = x
+
+    def convert_to_ntk(apply_fn, inputs, state):
+        def apply_fn_ntk(params):
+            return apply_fn(params, state, None, inputs)[0]
+        return apply_fn_ntk
+
+    ntk_input = ntk_input_all
+    apply_fn_ntk = convert_to_ntk(apply_fn, ntk_input, state)
+    ntk = custom_ntk.get_ntk(apply_fn_ntk, params)
+
+    y_ntk = apply_fn(params, state, rng_key, ntk_input)[0]
+    freg = 0
+    for i in range(class_num):
+        ntk_ = ntk[:, i, :, i]
+        y_ntk_ = y_ntk[:, i][:, None]
+        freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + eps * jnp.eye(x.shape[0])) @ y_ntk_)
+
+    freg = (jnp.sqrt(freg + eps) / ntk_input_all.shape[0]) ** 2
+    return freg
+
+
 Evaluate = utils_logging.Evaluate(apply_fn=apply_fn_train,
                                   loss_fn=loss_fun,
                                   llk_fn=llk_classification,
@@ -171,9 +226,11 @@ Evaluate = utils_logging.Evaluate(apply_fn=apply_fn_train,
 
 print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
 
-# Temp Evaluation
-# temp_eval = loss_classification_list.ntk_norm_loss_temp
-
+map_norm_list = []
+jac_norm_list = []
+f_norm_list = []
+ntk_norm_list = []
+ntk_init_norm_list = []
 print(f"--- Start Training with {args.method}--- \n")
 for epoch in tqdm(range(args.epochs)):
     for batch_idx, (image, label) in enumerate(train_loader):
@@ -181,14 +238,20 @@ for epoch in tqdm(range(args.epochs)):
         rng_key, _ = jax.random.split(rng_key)
         params, state, opt_state = update(params, state, opt_state, rng_key, image, label)
 
-        # Temp Evalation
-        # freg, ntk, ntk_inverse = temp_eval(params, params, state, rng_key, image, label)
-        # print('freg', freg)
-        # print('NTK', ntk)
-        # print('NTK Inv', ntk_inverse)
+        if batch_idx % 10 == 0:
+            map_norm = get_map_norm(params, state, image)
+            f_norm = get_f_norm(params, state, image)
+            jac_norm = get_jac_norm(params, state, image)
+            ntk_norm = get_ntk_norm(params, state, image)
+            ntk_init_norm = get_ntk_norm(params_init, state, image)
 
+            map_norm_list.append(map_norm)
+            f_norm_list.append(f_norm)
+            jac_norm_list.append(jac_norm)
+            ntk_norm_list.append(ntk_norm)
+            ntk_init_norm_list.append(ntk_init_norm)
 
-    if (epoch + 1) % args.log_freq == 0:
+    if (epoch + 1) % 50 == 0:
         metric_train = Evaluate.evaluate(train_loader,
                                          params,
                                          state,
@@ -205,6 +268,17 @@ for epoch in tqdm(range(args.epochs)):
         print(f"Epoch:{epoch} Partial Train LLK:{metric_train['llk']:2f} Test LLK:{metric_test['llk']:2f}")
         print(f"Epoch:{epoch} Partial Train ECE:{metric_train['ece']:2f} Test ECE:{metric_test['ece']:2f}")
         print(f"Epoch:{epoch} Partial Train Loss:{metric_train['loss']:3f} Test Loss:{metric_test['loss']:3f}")
+
+        fig = plt.figure(figsize=(15, 10))
+        ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm = fig.subplots(1, 5).flatten()
+        ax_map_norm.plot(jnp.array(map_norm_list), label='MAP norm')
+        ax_f_norm.plot(jnp.array(f_norm_list), label='F norm')
+        ax_jac_norm.plot(jnp.array(jac_norm_list), label='Jac norm')
+        ax_ntk_norm.plot(jnp.array(ntk_norm_list), label='NTK norm')
+        ax_ntk_init_norm.plot(jnp.array(ntk_init_norm_list), label='NTK init norm')
+        for ax in [ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm]:
+            ax.legend()
+        plt.show()
 
         if args.save:
             Evaluate.save_log(epoch, metric_train, metric_test)

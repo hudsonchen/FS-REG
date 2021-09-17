@@ -53,18 +53,18 @@ class loss_cl_list:
 
     @partial(jit, static_argnums=(0,))
     def weight_l2_norm_loss_without_fisher(self,
-                            params: hk.Params,
-                            params_last: hk.Params,
-                            params_list,
-                            state: hk.State,
-                            rng_key: jnp.array,
-                            x,
-                            y,
-                            task_id,
-                            ind_points,
-                            ind_id,
-                            fisher
-                            ):
+                                           params: hk.Params,
+                                           params_last: hk.Params,
+                                           params_list,
+                                           state: hk.State,
+                                           rng_key: jnp.array,
+                                           x,
+                                           y,
+                                           task_id,
+                                           ind_points,
+                                           ind_id,
+                                           fisher
+                                           ):
         task_id = jnp.ones(x.shape[0]) * task_id
         f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
@@ -77,18 +77,18 @@ class loss_cl_list:
 
     @partial(jit, static_argnums=(0,))
     def weight_l2_norm_loss_with_fisher(self,
-                            params: hk.Params,
-                            params_last: hk.Params,
-                            params_list,
-                            state: hk.State,
-                            rng_key: jnp.array,
-                            x,
-                            y,
-                            task_id,
-                            ind_points,
-                            ind_id,
-                            fisher
-                            ):
+                                        params: hk.Params,
+                                        params_last: hk.Params,
+                                        params_list,
+                                        state: hk.State,
+                                        rng_key: jnp.array,
+                                        x,
+                                        y,
+                                        task_id,
+                                        ind_points,
+                                        ind_id,
+                                        fisher
+                                        ):
         task_id = jnp.ones(x.shape[0]) * task_id
         f_hat = self.apply_fn(params, state, rng_key, x, task_id)[0]
         y_hat = jax.nn.softmax(f_hat, axis=1)
@@ -155,6 +155,7 @@ class loss_cl_list:
         def convert_to_ntk(apply_fn, inputs, state, task_id):
             def apply_fn_ntk(params):
                 return apply_fn(params, state, None, inputs, task_id)[0]
+
             return apply_fn_ntk
 
         if self.element_wise:
@@ -222,6 +223,7 @@ class loss_cl_list:
         def convert_to_ntk(apply_fn, inputs, state):
             def apply_fn_ntk(params):
                 return apply_fn(params, state, None, inputs, task_id)[0]
+
             return apply_fn_ntk
 
         for params_last in params_list:
@@ -256,7 +258,8 @@ class loss_cl_list:
                     ntk_ = ntk[:, i, :, i]
                     y_ntk_ = y_ntk[:, i][:, None]
                     if self.inverse:
-                        freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + eps * jnp.eye(self.dummy_input_dim)) @ y_ntk_)
+                        freg += jnp.squeeze(
+                            y_ntk_.T @ jnp.linalg.inv(ntk_ + eps * jnp.eye(self.dummy_input_dim)) @ y_ntk_)
                     else:
                         freg += jnp.squeeze(y_ntk_.T @ ntk_ @ y_ntk_)
             freg = (jnp.sqrt(freg + eps) / ntk_input_all.shape[0]) ** 2
