@@ -45,7 +45,8 @@ class Evaluate:
             llk = self.llk_fn(params, params, state, rng_key, image, label)[0]
             llk_ += llk
 
-            ece = um.ece(label.argmax(-1), jax.nn.softmax(preds, axis=1))
+            # ece = um.ece(label.argmax(-1), jax.nn.softmax(preds, axis=1))
+            ece = 0
             ece_ += ece
 
         loss_ /= len(loader)

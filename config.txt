@@ -19,6 +19,8 @@
 # Choose partition (queue) "gpu" or "gpu-share"
 #SBATCH -p gpu-share
 
+export XLA_PYTHON_CLIENT_PREALLOCATE="false"
+
 # To use 4 cpu cores and 2 gpu devices in a node
 #SBATCH -N 1 -n 4 --gres=gpu:2
 
