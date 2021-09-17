@@ -2,7 +2,7 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3, 4, 5, 6, 7"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION=.XX"] = "0.95"
-path = '/import/home/weizhong/hudson/function_map/mlp_mixer'
+path = '/home/weizhong/hudson/function_map/mlp_mixer'
 os.chdir(path)
 print(os.getcwd())
 import sys
