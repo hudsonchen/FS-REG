@@ -20,7 +20,7 @@
 #SBATCH -p gpu3090
 
 # To use 4 cpu cores and 2 gpu devices in a node
-#SBATCH -N 1 -n 8 --gres=gpu:16
+#SBATCH -N 1 -n 4 --gres=gpu:8
 
 # Setup runtime environment if necessary
 # or you can source ~/.bashrc or ~/.bash_profile
@@ -32,6 +32,5 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda:/usr/local/cuda/lib64:/u
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
 # Execute applications in parallel
-srun -p gpu3090 -n 4 --gres=gpu:8 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar10 --method ntk_norm --optimizer sgd --reg 10 --inverse --dummy_input_dim 2 --epochs 20 --train_size 50000 --batch_size 256 --aug --seed 0
 srun -p gpu3090 -n 4 --gres=gpu:8 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar10 --method ntk_norm --optimizer sgd --reg 10 --inverse --dummy_input_dim 2 --epochs 20 --train_size 50000 --batch_size 256 --aug --seed 0
 wait
