@@ -18,7 +18,8 @@ import resnet_mod
 # from jax import config
 # config.update('jax_disable_jit', True)
 
-
+print(os.listdir('/usr/local/'))
+print(os.getcwd())
 
 # Args
 parser = argparse.ArgumentParser()
