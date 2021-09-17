@@ -26,6 +26,7 @@
 # or you can source ~/.bashrc or ~/.bash_profile
 
 export XLA_PYTHON_CLIENT_PREALLOCATE="false"
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-10.2
 
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
