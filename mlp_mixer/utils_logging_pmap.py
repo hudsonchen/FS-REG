@@ -80,6 +80,9 @@ class Evaluate:
                 'Test Acc': metric_test['acc'],
             })
             metrics_file.close()
+        # Debuggin purpose on slurm
+        with open(f'{self.kwargs["save_path"]}/metrics_{epoch}', "wb") as file:
+            pickle.dump(metric_test, file)
 
     def save_params(self, epoch, params, state):
         with open(f'{self.kwargs["save_path"]}/params_{epoch}', "wb") as file:
