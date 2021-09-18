@@ -32,5 +32,5 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda:/usr/local/cuda/lib64:/u
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
 # Execute applications in parallel
-srun -p gpu3090 -n 8 --gres=gpu:8 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar10 --method map --optimizer sgd --reg 0.0005 --inverse --dummy_input_dim 2 --epochs 20 --train_size 50000 --batch_size 256 --aug --seed 0 --save --save_path /home/weizhong/hudson/function_map/results
+srun -p gpu3090 -n 1 --gres=gpu:8 --cpus-per-task=16 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar10 --method map --optimizer sgd --reg 0.0005 --inverse --dummy_input_dim 2 --epochs 20 --train_size 50000 --batch_size 256 --aug --seed 0 --save --save_path /home/weizhong/hudson/function_map/results
 wait
