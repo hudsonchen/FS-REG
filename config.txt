@@ -17,7 +17,7 @@
 ##SBATCH --mail-type=end
 
 # Choose partition (queue) "gpu" or "gpu-share"
-#SBATCH -p gpu
+#SBATCH -p gpu3090
 
 # To use 4 cpu cores and 2 gpu devices in a node
 #SBATCH -N 1 -n 8 --gres=gpu:8
@@ -32,5 +32,5 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda:/usr/local/cuda/lib64:/u
 # Go to the job submission directory and run your application
 cd $HOME/apps/slurm
 # Execute applications in parallel
-srun -p gpu -n 1 --gres=gpu:8 --cpus-per-task=8 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar100 --method map --optimizer sgd --reg 0.00 --inverse --dummy_input_dim 2 --element_wise --epochs 30 --train_size 50000 --batch_size 128 --aug --seed 0 --save --save_path /home/weizhong/hudson/function_map/results
+srun -p gpu3090 -n 1 --gres=gpu:8 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar100 --method ntk_norm --optimizer sgd --reg 1.0 --inverse --dummy_input_dim 2 --element_wise --epochs 40 --train_size 50000 --batch_size 128 --aug --seed 0 --save --save_path /home/weizhong/hudson/function_map/results
 wait
