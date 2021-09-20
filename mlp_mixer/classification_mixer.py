@@ -37,7 +37,7 @@ parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--aug', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--lr_decay', type=float, default=0.5)
+parser.add_argument('--lr_decay', type=float, default=0.3)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=200)
@@ -95,7 +95,7 @@ state = init_state
 
 # Optimizer Initialization
 def schedule_fn(learning_rate, n_batches):
-    epoch_points = [6, 15, 25, 35]
+    epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.5), int(args.epochs * 0.8)]
     epoch_points = (jnp.array(epoch_points) * n_batches).tolist()
     return utils.piecewise_constant_schedule(learning_rate, epoch_points, args.lr_decay)
 
