@@ -6,6 +6,7 @@ from functools import partial
 import haiku as hk
 import os
 import optax
+import pickle
 import argparse
 from tqdm import tqdm
 import loss_classification
@@ -226,11 +227,12 @@ Evaluate = utils_logging.Evaluate(apply_fn=apply_fn_train,
 
 print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
 
-map_norm_list = []
-jac_norm_list = []
-f_norm_list = []
-ntk_norm_list = []
-ntk_init_norm_list = []
+norm_all = {'map': [],
+            'jac_norm': [],
+            'f_norm': [],
+            'ntk_norm': [],
+            'ntk_init_norm': []}
+
 print(f"--- Start Training with {args.method}--- \n")
 for epoch in tqdm(range(args.epochs)):
     for batch_idx, (image, label) in enumerate(train_loader):
@@ -245,11 +247,11 @@ for epoch in tqdm(range(args.epochs)):
             ntk_norm = get_ntk_norm(params, state, image)
             ntk_init_norm = get_ntk_norm(params_init, state, image)
 
-            map_norm_list.append(map_norm)
-            f_norm_list.append(f_norm)
-            jac_norm_list.append(jac_norm)
-            ntk_norm_list.append(ntk_norm)
-            ntk_init_norm_list.append(ntk_init_norm)
+            norm_all['map'].append(map_norm)
+            norm_all['f_norm'].append(f_norm)
+            norm_all['jac_norm'].append(jac_norm)
+            norm_all['ntk_norm'].append(ntk_norm)
+            norm_all['ntk_init_norm'].append(ntk_init_norm)
 
     if (epoch + 1) % 50 == 0:
         metric_train = Evaluate.evaluate(train_loader,
@@ -271,11 +273,11 @@ for epoch in tqdm(range(args.epochs)):
 
         fig = plt.figure(figsize=(15, 10))
         ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm = fig.subplots(1, 5).flatten()
-        ax_map_norm.plot(jnp.array(map_norm_list), label='MAP norm')
-        ax_f_norm.plot(jnp.array(f_norm_list), label='F norm')
-        ax_jac_norm.plot(jnp.array(jac_norm_list), label='Jac norm')
-        ax_ntk_norm.plot(jnp.array(ntk_norm_list), label='NTK norm')
-        ax_ntk_init_norm.plot(jnp.array(ntk_init_norm_list), label='NTK init norm')
+        ax_map_norm.plot(jnp.array(norm_all['map']), label='MAP norm')
+        ax_f_norm.plot(jnp.array(norm_all['f_norm']), label='F norm')
+        ax_jac_norm.plot(jnp.array(norm_all['jac_norm']), label='Jac norm')
+        ax_ntk_norm.plot(jnp.array(norm_all['ntk_norm']), label='NTK norm')
+        ax_ntk_init_norm.plot(jnp.array(norm_all['ntk_init_norm']), label='NTK init norm')
         for ax in [ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm]:
             ax.legend()
         plt.show()
@@ -288,3 +290,7 @@ if args.save:
     save_path = kwargs["save_path"]
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
     os.rename(save_path, f"{save_path}__complete")
+
+with open(f'/home/xzhoubi/hudson/function_map/aistats_plot/norm_all', "wb") as file:
+    pickle.dump(norm_all, file)
+
