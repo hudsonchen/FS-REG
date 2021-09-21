@@ -95,7 +95,7 @@ state = init_state
 
 # Optimizer Initialization
 def schedule_fn(learning_rate, n_batches):
-    epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.5), int(args.epochs * 0.8)]
+    epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.5), int(args.epochs * 0.7)]
     epoch_points = (jnp.array(epoch_points) * n_batches).tolist()
     return utils.piecewise_constant_schedule(learning_rate, epoch_points, args.lr_decay)
 
@@ -173,7 +173,7 @@ for epoch in range(epochs):
         image = utils.split(image, n_devices)
         label = utils.split(label, n_devices)
         _, rng_key = jax.random.split(rng_key)
-        rng_key_multi = jax.random.split(rng_key, num=8)
+        rng_key_multi = jax.random.split(rng_key, num=n_devices)
         loss_value, params, opt_state = update(params, opt_state, rng_key_multi, image, label)
 
         if batch_idx % 100 == 0:
