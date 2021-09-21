@@ -2,8 +2,8 @@ import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3, 4, 5, 6, 7"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION=.XX"] = "0.95"
-# path = '/home/weizhong/hudson/function_map/mlp_mixer'
-path = '/home/xzhoubi/hudson/function_map/mlp_mixer'
+path = '/home/weizhong/hudson/function_map/mlp_mixer'
+# path = '/home/xzhoubi/hudson/function_map/mlp_mixer'
 os.chdir(path)
 print(os.getcwd())
 import sys
@@ -86,8 +86,8 @@ net = MLP_mixer_mod.MlpMixer(patches=[16, 16],
                              channels_mlp_dim=3072)
 init_state, init_params = net.init(rng_key, x_init).pop('params')
 
-pretrained_path = '/home/xzhoubi/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
-# pretrained_path = '/home/weizhong/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
+# pretrained_path = '/home/xzhoubi/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
+pretrained_path = '/home/weizhong/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
 params = checkpoint.load_pretrained(pretrained_path, init_params)
 del init_params
 state = init_state
