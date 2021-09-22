@@ -95,7 +95,8 @@ state = init_state
 
 # Optimizer Initialization
 def schedule_fn(learning_rate, n_batches):
-    epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.4), int(args.epochs * 0.6)]
+    # epoch_points = [int(args.epochs * 0.3), int(args.epochs * 0.4), int(args.epochs * 0.6)]
+    epoch_points = [9, 15, 24]
     epoch_points = (jnp.array(epoch_points) * n_batches).tolist()
     return utils.piecewise_constant_schedule(learning_rate, epoch_points, args.lr_decay)
 
