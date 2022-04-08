@@ -21,6 +21,7 @@ import resnet_mod
 print(os.listdir('/usr/local/'))
 print(os.getcwd())
 
+
 # Args
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
@@ -33,7 +34,9 @@ parser.add_argument('--lr_decay', type=float, default='0.5')
 parser.add_argument('--dummy_input_dim', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--inverse', action="store_true", default=False)
-parser.add_argument('--use_bn', action="store_true", default=False)
+parser.add_argument('--no_bn', action="store_true", default=False)
+parser.add_argument('--use_dropout', action="store_true", default=False)
+parser.add_argument('--dropout_rate', type=float, default=0.0)
 parser.add_argument('--element_wise', action="store_true", default=False)
 parser.add_argument('--aug', action="store_true", default=False)
 parser.add_argument('--save', action="store_true", default=False)
@@ -73,17 +76,19 @@ else:
 
 # Model Initialization
 if args.architecture == "lenet":
-    init_fn, apply_fn = hk.transform_with_state(lambda x: network.LeNet(output_dim=10)(x))
+    init_fn, apply_fn = hk.transform_with_state(lambda x: network.LeNet(output_dim=10,
+                                                                        use_dropout=args.use_dropout,
+                                                                        dropout_rate=args.dropout_rate)(x))
     apply_fn_train = apply_fn
     apply_fn_eval = apply_fn
 elif args.architecture == "resnet18":
     if args.train_size < 3000 and not args.aug:
         def forward(x, is_training):
-            net = resnet_mod.ResNet18(10, use_bn=True, resnet_v1=True)
+            net = resnet_mod.ResNet18(10, use_bn=not args.no_bn, resnet_v1=True)
             return net(x, is_training)
     else:
         def forward(x, is_training):
-            net = resnet_mod.ResNet18(10, use_bn=True)
+            net = resnet_mod.ResNet18(10, use_bn=not args.no_bn)
             return net(x, is_training)
 
     forward = hk.transform_with_state(forward)
@@ -92,6 +97,8 @@ elif args.architecture == "resnet18":
     apply_fn_eval = partial(forward.apply, is_training=False)
 elif args.architecture == "vgg11":
     pass
+elif args.architecture == 'mlp':
+    init_fn, apply_fn = hk.transform_with_state(lambda x: network.MLP(output_dim=10)(x))
 else:
     raise NotImplementedError
 

@@ -41,7 +41,7 @@ parser.add_argument('--save', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--log_freq', type=int, default=5)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results")
+parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results/ablation")
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 args = parser.parse_args()
@@ -240,18 +240,17 @@ for epoch in tqdm(range(args.epochs)):
         rng_key, _ = jax.random.split(rng_key)
         params, state, opt_state = update(params, state, opt_state, rng_key, image, label)
 
-        if batch_idx % 10 == 0:
-            map_norm = get_map_norm(params, state, image)
-            f_norm = get_f_norm(params, state, image)
-            jac_norm = get_jac_norm(params, state, image)
-            ntk_norm = get_ntk_norm(params, state, image)
-            ntk_init_norm = get_ntk_norm(params_init, state, image)
+    map_norm = get_map_norm(params, state, image)
+    f_norm = get_f_norm(params, state, image)
+    jac_norm = get_jac_norm(params, state, image)
+    ntk_norm = get_ntk_norm(params, state, image)
+    ntk_init_norm = get_ntk_norm(params_init, state, image)
 
-            norm_all['map'].append(map_norm)
-            norm_all['f_norm'].append(f_norm)
-            norm_all['jac_norm'].append(jac_norm)
-            norm_all['ntk_norm'].append(ntk_norm)
-            norm_all['ntk_init_norm'].append(ntk_init_norm)
+    norm_all['map'].append(map_norm)
+    norm_all['f_norm'].append(f_norm)
+    norm_all['jac_norm'].append(jac_norm)
+    norm_all['ntk_norm'].append(ntk_norm)
+    norm_all['ntk_init_norm'].append(ntk_init_norm)
 
     if (epoch + 1) % 50 == 0:
         metric_train = Evaluate.evaluate(train_loader,
@@ -271,26 +270,26 @@ for epoch in tqdm(range(args.epochs)):
         print(f"Epoch:{epoch} Partial Train ECE:{metric_train['ece']:2f} Test ECE:{metric_test['ece']:2f}")
         print(f"Epoch:{epoch} Partial Train Loss:{metric_train['loss']:3f} Test Loss:{metric_test['loss']:3f}")
 
-        fig = plt.figure(figsize=(15, 10))
-        ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm = fig.subplots(1, 5).flatten()
-        ax_map_norm.plot(jnp.array(norm_all['map']), label='MAP norm')
-        ax_f_norm.plot(jnp.array(norm_all['f_norm']), label='F norm')
-        ax_jac_norm.plot(jnp.array(norm_all['jac_norm']), label='Jac norm')
-        ax_ntk_norm.plot(jnp.array(norm_all['ntk_norm']), label='NTK norm')
-        ax_ntk_init_norm.plot(jnp.array(norm_all['ntk_init_norm']), label='NTK init norm')
-        for ax in [ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm]:
-            ax.legend()
-        plt.show()
+        # fig = plt.figure(figsize=(15, 10))
+        # ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm = fig.subplots(1, 5).flatten()
+        # ax_map_norm.plot(jnp.array(norm_all['map']), label='MAP norm')
+        # ax_f_norm.plot(jnp.array(norm_all['f_norm']), label='F norm')
+        # ax_jac_norm.plot(jnp.array(norm_all['jac_norm']), label='Jac norm')
+        # ax_ntk_norm.plot(jnp.array(norm_all['ntk_norm']), label='NTK norm')
+        # ax_ntk_init_norm.plot(jnp.array(norm_all['ntk_init_norm']), label='NTK init norm')
+        # for ax in [ax_map_norm, ax_f_norm, ax_jac_norm, ax_ntk_norm, ax_ntk_init_norm]:
+        #     ax.legend()
+        # plt.show()
 
-        if args.save:
-            Evaluate.save_log(epoch, metric_train, metric_test)
-            Evaluate.save_params(epoch, params, state)
+        # if args.save:
+        #     Evaluate.save_log(epoch, metric_train, metric_test)
+        #     Evaluate.save_params(epoch, params, state)
 
 if args.save:
     save_path = kwargs["save_path"]
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
     os.rename(save_path, f"{save_path}__complete")
 
-with open(f'/home/xzhoubi/hudson/function_map/aistats_plot/norm_all', "wb") as file:
+with open(f'/home/xzhoubi/hudson/function_map/results/ablation/norm_all_{args.reg}_{args.optimizer}_seed_{args.seed}', "wb") as file:
     pickle.dump(norm_all, file)
 

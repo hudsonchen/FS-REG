@@ -2,6 +2,7 @@ from typing import Tuple, Callable, List
 from jax import jit
 import jax
 import jax.numpy as jnp
+import numpy as np
 from functools import partial
 import haiku as hk
 import os
@@ -42,6 +43,7 @@ parser.add_argument('--lr', type=float, default=1e-3)
 parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results")
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
+parser.add_argument('--sigma', type=float, default=0.1)
 args = parser.parse_args()
 kwargs = utils.process_args(args)
 
@@ -129,13 +131,13 @@ elif args.dataset == 'cifar10':
 else:
     raise NotImplementedError(args.dataset)
 
-print(X_train.shape)
-print(y_train.shape)
-print(X_test.shape)
-print(y_test.shape)
-
-ntk_dim = int(50)
-train_num = 500
+if args.dataset == 'mnist':
+    ntk_dim = 50
+elif args.dataset == 'cifar10':
+    ntk_dim = 2
+else:
+    raise NotImplementedError(args.dataset)
+train_num = args.train_size
 test_num = 100
 iter_train = int(train_num / ntk_dim)
 iter_test = int(test_num / ntk_dim)
@@ -144,51 +146,119 @@ y_test_nystrom = []
 J_list_train = []
 J_list_test = []
 
-print("Compute Train NTK:")
-for _ in tqdm(range(iter_train)):
+X_train = X_train[:train_num, :]
+y_train = y_train[:train_num, :]
+print(X_train.shape)
+print(y_train.shape)
+print(X_test.shape)
+print(y_test.shape)
+
+print(f"Train Samples Size:{args.train_size}")
+print(f"Compute Train NTK:")
+K_train = jnp.zeros([train_num, train_num])
+
+
+@jit
+def J_J_T(J_1, J_2, ntk):
+    shape_1, shape2 = ntk.shape
+    for a in J_1:
+        for b in J_1[a]:
+            J_1_flatten = J_1[a][b].reshape(shape_1, -1)
+            J_2_flatten = J_2[a][b].reshape(shape_1, -1)
+            ntk += J_1_flatten @ J_2_flatten.T
+    return ntk
+
+
+if os.path.isfile(f'/home/xzhoubi/hudson/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy'):
+    K_train = jnp.load(f'/home/xzhoubi/hudson/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy')
+else:
+    for i in tqdm(range(iter_train)):
+        rng_key, _ = jax.random.split(rng_key)
+        X_ntk_1 = X_train[i * ntk_dim:(i+1) * ntk_dim, :]
+        def forward(params):
+            return apply_fn_train(params, state, rng_key, X_ntk_1)[0]
+
+        J_1 = jax.jacrev(forward)(params)
+
+        for j in range(iter_train):
+            rng_key, _ = jax.random.split(rng_key)
+            X_ntk_2 = X_train[j * ntk_dim:(j+1) * ntk_dim, :]
+            def forward(params):
+                return apply_fn_train(params, state, rng_key, X_ntk_2)[0]
+            J_2 = jax.jacrev(forward)(params)
+
+            ntk_batch = J_J_T(J_1, J_2, jnp.zeros([ntk_dim, ntk_dim]))
+            K_train = jax.ops.index_update(K_train, jax.ops.index[i * ntk_dim:(i+1) * ntk_dim, j * ntk_dim:(j+1) * ntk_dim], ntk_batch)
+    np.save(f'/home/xzhoubi/hudson/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy', K_train)
+print("Compute Train NTK Finished!\n\n")
+
+# Scale down K_train for numerical reasons
+K_mean = K_train.mean()
+K_train = K_train / K_mean
+
+if args.train_size > 500:
+    print("Nystrom Approximation")
+    nystrom_size = jnp.maximum(500, int(jnp.sqrt(train_num)))
+
     rng_key, _ = jax.random.split(rng_key)
-    ntk_idx = jax.random.permutation(rng_key, X_train.shape[0])[:ntk_dim]
-    X_ntk = X_train[ntk_idx, :]
-    def forward(params):
-        return apply_fn_train(params, state, rng_key, X_ntk)[0]
-    J_ = jax.jacrev(forward)(params)
-    J_list_train.append(J_)
+    nystrom_idx = jax.random.permutation(rng_key, train_num)[:nystrom_size]
 
-    y_train_nystrom.append(y_train[ntk_idx, :])
+    K_nystrom = K_train[nystrom_idx, :][:, nystrom_idx]
+    U, s, V = scipy.linalg.svd(K_nystrom)
 
-y_train_nystrom = jnp.concatenate(y_train_nystrom, axis=0)
+    U_recon = jnp.sqrt(nystrom_size / train_num) * K_train[:, nystrom_idx] @ U @ jnp.diag(1. / s)
+    S_recon = s * (train_num / nystrom_size)
+    print("Nystrom Approximation Finished!\n\n")
 
-for _ in range(5):
-    y_test_nystrom = []
-    J_list_test = J_list_train[0:iter_train]
-    print(len(J_list_test))
+    print("Compute K_train Inversion")
+    sigma = args.sigma
+    Sigma_inv = (1. / sigma) * jnp.eye(train_num)
+    K_train_inv = Sigma_inv - Sigma_inv @ U_recon @ scipy.linalg.inv(
+        jnp.diag(1. / S_recon) + U_recon.T @ Sigma_inv @ U_recon) @ U_recon.T @ Sigma_inv
+    K_train_inv = K_train_inv / K_mean  # Don't forget the scaling!
+    print("Compute K_train Inversion Finished!\n\n")
 
-    print("Compute Test NTK:")
-    for i in tqdm(range(iter_test)):
+else:
+    print("Compute K_train Inversion")
+    sigma = args.sigma
+    K_train_inv = scipy.linalg.inv(K_train + sigma * jnp.eye(train_num))
+    K_train_inv = K_train_inv / K_mean  # Don't forget the scaling!
+    print("Compute K_train Inversion Finished!\n\n")
+
+accuracy_all = []
+for itx in range(10):
+    print(f"Compute Test NTK of iter {itx}")
+    y_test_sample = []
+    K_train_test = jnp.zeros([train_num + test_num, train_num + test_num])
+    K_train_test = jax.ops.index_update(K_train_test, jax.ops.index[:train_num, :train_num], K_train)
+
+    for j in range(iter_test):
         rng_key, _ = jax.random.split(rng_key)
         ntk_idx = jax.random.permutation(rng_key, X_test.shape[0])[:ntk_dim]
-        X_ntk = X_test[ntk_idx, :]
+        X_ntk_2 = X_test[ntk_idx, :]
         def forward(params):
-            return apply_fn_train(params, state, rng_key, X_ntk)[0]
-        J_ = jax.jacrev(forward)(params)
-        J_list_test.append(J_)
+            return apply_fn_train(params, state, rng_key, X_ntk_2)[0]
+        J_2 = jax.jacrev(forward)(params)
+        y_test_sample.append(y_test[ntk_idx, :])
 
-        y_test_nystrom.append(y_test[ntk_idx, :])
+        for i in tqdm(range(iter_train)):
+            rng_key, _ = jax.random.split(rng_key)
+            X_ntk_1 = X_train[i * ntk_dim:(i + 1) * ntk_dim, :]
+            def forward(params):
+                return apply_fn_train(params, state, rng_key, X_ntk_1)[0]
+            J_1 = jax.jacrev(forward)(params)
 
-    y_test_nystrom = jnp.concatenate(y_test_nystrom, axis=0)
-    ntk = jnp.zeros([test_num + train_num, test_num + train_num])
+            ntk_batch = J_J_T(J_1, J_2, jnp.zeros([ntk_dim, ntk_dim]))
+            K_train_test = jax.ops.index_update(K_train_test, jax.ops.index[i * ntk_dim:(i+1) * ntk_dim, train_num + j * ntk_dim:train_num + (j+1) * ntk_dim], ntk_batch)
+            K_train_test = jax.ops.index_update(K_train_test, jax.ops.index[train_num + j * ntk_dim:train_num + (j+1) * ntk_dim, i * ntk_dim:(i+1) * ntk_dim], ntk_batch.T)
 
-    for a in J_:
-        for b in J_[a]:
-            J_temp = []
-            for J_batch in J_list_test:
-                J_temp.append(J_batch[a][b])
-            J_temp = jnp.concatenate(J_temp, axis=0)
-            J_temp = J_temp.reshape(J_temp.shape[0], -1)
-            ntk += J_temp @ J_temp.T
-
-    print('Solve Matrix Inversion:')
-    y_test_hat = ntk[train_num:, :train_num].dot(scipy.linalg.solve(ntk[:train_num, :train_num], y_train_nystrom))
-    acc = jnp.equal(y_test_nystrom.argmax(-1), y_test_hat.argmax(-1)).mean()
+    y_test_sample = jnp.concatenate(y_test_sample, axis=0)
+    y_test_hat = K_train_test[train_num:, :train_num] @ K_train_inv @ y_train
+    acc = jnp.equal(y_test_sample.argmax(-1), y_test_hat.argmax(-1)).mean()
     print(f"Accuracy:{acc}")
+    accuracy_all.append(acc)
+
+print("Saving Results")
+file_name = f'/home/xzhoubi/hudson/function_map/results/kernel_reg_{args.dataset}/acc_{train_num}_{sigma}.npy'
+np.save(file_name, jnp.array(accuracy_all))
 

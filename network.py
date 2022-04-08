@@ -21,7 +21,7 @@ class MLP:
         self.architecture = architecture
         self.rng_key = jax.random.PRNGKey(seed)
 
-    def forward_fn(self, inputs: jnp.ndarray):
+    def __call__(self, inputs: jnp.ndarray):
         out = inputs
         for unit in self.architecture:
             fully_connected = hk.Linear(unit)
@@ -36,12 +36,16 @@ class LeNet:
     def __init__(
             self,
             output_dim: int,
+            use_dropout: bool = False,
+            dropout_rate: float = 0.0,
             activation_fn: str = "relu",
             seed: int = 1,
     ):
         self.output_dim = output_dim
         self.activation_fn = ACTIVATION_DICT[activation_fn]
         self.rng_key = jax.random.PRNGKey(seed)
+        self.use_dropout = use_dropout
+        self.dropout_rate = dropout_rate
 
         self.conv1 = hk.Conv2D(
             output_channels=6,
@@ -72,6 +76,10 @@ class LeNet:
         out = self.avg_pool(out)
         out = self.activation_fn(self.conv3(out))
         out = out.reshape([inputs.shape[0], -1])
+        if self.use_dropout:
+            out = hk.dropout(self.rng_key, self.dropout_rate, out)
         out = self.activation_fn(self.fc1(out))
+        if self.use_dropout:
+            out = hk.dropout(self.rng_key, self.dropout_rate, out)
         out = self.fc2(out)
         return out

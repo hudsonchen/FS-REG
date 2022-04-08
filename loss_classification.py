@@ -159,6 +159,7 @@ class loss_classification_list:
         def convert_to_ntk(apply_fn, inputs, state):
             def apply_fn_ntk(params):
                 return apply_fn(params, state, None, inputs)[0]
+
             return apply_fn_ntk
 
         if self.element_wise:

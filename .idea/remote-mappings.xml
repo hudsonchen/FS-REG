@@ -4,6 +4,20 @@
     <list>
       <list>
         <remote-mappings server-id="python@95632554-3464-4117-9b4b-9b8bd08bb3db" />
+        <remote-mappings server-id="python@sshConfig://xzhoubi@gpu10:22 agent/home/xzhoubi/hudson/miniconda3/envs/fmap/bin/python">
+          <settings>
+            <list>
+              <mapping local-root="$PROJECT_DIR$" remote-root="/home/xzhoubi/hudson/function_map" />
+            </list>
+          </settings>
+        </remote-mappings>
+        <remote-mappings server-id="python@sshConfig://xzhoubi@gpu10:22 agent/home/xzhoubi/hudson/miniconda3/envs/hudson/bin/python">
+          <settings>
+            <list>
+              <mapping local-root="$PROJECT_DIR$" remote-root="/home/xzhoubi/hudson/function_map" />
+            </list>
+          </settings>
+        </remote-mappings>
       </list>
     </list>
   </component>
