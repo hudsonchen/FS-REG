@@ -1,6 +1,7 @@
 from jax import jit
 import jax
 import jax.numpy as jnp
+import numpy as np
 from functools import partial
 import haiku as hk
 import os
@@ -15,7 +16,7 @@ import utils_logging
 import resnet_mod
 from jax.config import config
 
-config.update('jax_disable_jit', False)
+config.update('jax_disable_jit', True)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
@@ -74,7 +75,10 @@ elif args.dataset == "cifar10":
         data_augmentation=args.aug,
         train_size=args.train_size)
 elif args.dataset == "scop":
-    image_size, num_classes, train_loader, test_loader = dataset.get_SCOP(batch_size=args.batch_size)
+    total_size = int(np.load('/home/xzhoubi/hudson/data/scop/total_size.npy'))
+    image_size, num_classes, train_loader, test_loader = dataset.get_SCOP(batch_size=args.batch_size,
+                                                                          total_size=total_size)
+    print(f'class num is {num_classes} and total data num is {total_size}')
 else:
     raise NotImplementedError
 
@@ -194,6 +198,7 @@ print(f"Partial Training Image Size:{len(train_loader) * args.batch_size}")
 print(f"--- Start Training with {args.method}--- \n")
 for epoch in tqdm(range(args.epochs)):
     for batch_idx, (image, label) in enumerate(train_loader):
+        print(batch_idx)
         image, label = utils.tensor2array(image, label, num_classes)
         rng_key, _ = jax.random.split(rng_key)
         params, state, opt_state = update(params, state, opt_state, rng_key, image, label)

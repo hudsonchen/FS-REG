@@ -239,10 +239,10 @@ def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/",
     return image_size, num_classes, train_loader, test_loader
 
 
-def get_SCOP(batch_size):
+def get_SCOP(batch_size, total_size):
     image_size = [1, 400, 20, 1]
-    num_classes = 10
-    train_size_all = int(num_classes * 100 * 0.7)
+    num_classes = int(np.load('/home/xzhoubi/hudson/data/scop/num_class.npy'))
+    train_size_all = int(total_size * 0.7)
     test_batch = 100
 
     idxs = np.arange(train_size_all)  # shuffle examples first
@@ -251,12 +251,12 @@ def get_SCOP(batch_size):
     train_idxs = idxs[:train_size_all]
     train_sampler = torch.utils.data.sampler.SubsetRandomSampler(train_idxs)
 
-    train_dataset = SCOP(train_or_test='train', num_classes=num_classes)
-    test_dataset = SCOP(train_or_test='test', num_classes=num_classes)
+    train_dataset = SCOP(train_or_test='train', total_size=total_size)
+    test_dataset = SCOP(train_or_test='test', total_size=total_size)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
-                                               shuffle=False, num_workers=12, sampler=train_sampler)
+                                               shuffle=False, num_workers=12, sampler=train_sampler, drop_last=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
-                                              shuffle=False, num_workers=12)
+                                              shuffle=False, num_workers=12, drop_last=True)
     return image_size, num_classes, train_loader, test_loader
 
 
@@ -267,10 +267,9 @@ def collate_fn(batch):
 
 
 class SCOP(Dataset):
-    def __init__(self, train_or_test):
-        self.scale = 1
-        total_num = np.save('/home/xzhoubi/hudson/data/scop/total_size.npy')
-        rand_perm = np.random.permutation(total_num)
+    def __init__(self, train_or_test, total_size):
+        self.scale = 1.
+        rand_perm = np.random.permutation(total_size)
         with open('/home/xzhoubi/hudson/data/scop/images', 'rb') as fo:
             images = pickle.load(fo, encoding='bytes')
             images = images[rand_perm, :]
@@ -280,11 +279,11 @@ class SCOP(Dataset):
             targets = targets[rand_perm]
 
         if train_or_test == 'train':
-            self.images = images[:int(total_num * 0.7), :]
-            self.targets = targets[:int(total_num * 0.7)]
+            self.images = images[:int(total_size * 0.75), :]
+            self.targets = targets[:int(total_size * 0.75)]
         else:
-            self.images = images[int(total_num * 0.7):, :]
-            self.targets = targets[int(total_num * 0.7):]
+            self.images = images[int(total_size * 0.75):, :]
+            self.targets = targets[int(total_size * 0.75):]
         self.len = len(self.images)
 
     def __getitem__(self, index):

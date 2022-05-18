@@ -153,8 +153,8 @@ class loss_classification_list:
         log_likelihood = jnp.mean(jnp.sum(log_y_hat * y, axis=1), axis=0)
 
         # Compute function norm f(x)^T @ J(x)^T @ J(x) @ f(x)
-        ntk_input_all = x[random.shuffle(rng_key, np.arange(x.shape[0]))[:self.dummy_input_dim],
-                        :]  # Specify input for NTK
+        # Specify input for NTK
+        ntk_input_all = x[random.shuffle(rng_key, np.arange(x.shape[0]))[:self.dummy_input_dim], :]
 
         def convert_to_ntk(apply_fn, inputs, state):
             def apply_fn_ntk(params):
@@ -182,14 +182,14 @@ class loss_classification_list:
             ntk_input = ntk_input_all
             apply_fn_ntk = convert_to_ntk(self.apply_fn, ntk_input, state)
             ntk = custom_ntk.get_ntk(apply_fn_ntk, params_copy)
-
             y_ntk = self.apply_fn(params, state, rng_key, ntk_input)[0]
             freg = 0
             for i in range(self.class_num):
                 ntk_ = ntk[:, i, :, i]
                 y_ntk_ = y_ntk[:, i][:, None]
                 if self.inverse:
-                    freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + eps * jnp.eye(self.dummy_input_dim)) @ y_ntk_)
+                    # freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + eps * jnp.eye(self.dummy_input_dim)) @ y_ntk_)
+                    freg += jnp.squeeze(y_ntk_.T @ jnp.linalg.inv(ntk_ + jnp.eye(self.dummy_input_dim)) @ y_ntk_)
                 else:
                     freg += jnp.squeeze(y_ntk_.T @ ntk_ @ y_ntk_)
         freg = (jnp.sqrt(freg + eps) / ntk_input_all.shape[0]) ** 2
