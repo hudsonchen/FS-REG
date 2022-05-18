@@ -2,6 +2,7 @@ import numpy as np
 import seqtools
 import torch
 from torchvision import datasets as torch_datasets
+from torch.utils.data import Dataset
 from torchvision import transforms
 from copy import deepcopy
 import gzip
@@ -9,6 +10,8 @@ import pickle
 import matplotlib.pyplot as plt
 import utils
 import random
+import math
+import os
 
 random.seed(1)
 torch.manual_seed(1)
@@ -236,9 +239,63 @@ def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/",
     return image_size, num_classes, train_loader, test_loader
 
 
+def get_SCOP(batch_size):
+    image_size = [1, 400, 20, 1]
+    num_classes = 10
+    train_size_all = int(num_classes * 100 * 0.7)
+    test_batch = 100
+
+    idxs = np.arange(train_size_all)  # shuffle examples first
+    rnd = np.random.RandomState(42)
+    rnd.shuffle(idxs)
+    train_idxs = idxs[:train_size_all]
+    train_sampler = torch.utils.data.sampler.SubsetRandomSampler(train_idxs)
+
+    train_dataset = SCOP(train_or_test='train', num_classes=num_classes)
+    test_dataset = SCOP(train_or_test='test', num_classes=num_classes)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
+                                               shuffle=False, num_workers=12, sampler=train_sampler)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
+                                              shuffle=False, num_workers=12)
+    return image_size, num_classes, train_loader, test_loader
+
+
 def collate_fn(batch):
     inputs = np.stack([x for x, _ in batch])
     targets = np.stack([y for _, y in batch])
     return inputs, targets
 
 
+class SCOP(Dataset):
+    def __init__(self, train_or_test):
+        self.scale = 1
+        total_num = np.save('/home/xzhoubi/hudson/data/scop/total_size.npy')
+        rand_perm = np.random.permutation(total_num)
+        with open('/home/xzhoubi/hudson/data/scop/images', 'rb') as fo:
+            images = pickle.load(fo, encoding='bytes')
+            images = images[rand_perm, :]
+
+        with open('/home/xzhoubi/hudson/data/scop/targets', 'rb') as fo:
+            targets = pickle.load(fo, encoding='bytes')
+            targets = targets[rand_perm]
+
+        if train_or_test == 'train':
+            self.images = images[:int(total_num * 0.7), :]
+            self.targets = targets[:int(total_num * 0.7)]
+        else:
+            self.images = images[int(total_num * 0.7):, :]
+            self.targets = targets[int(total_num * 0.7):]
+        self.len = len(self.images)
+
+    def __getitem__(self, index):
+        images = self.images[index]
+        # if np.random.uniform() > 0.8:
+        #     images = np.flipud(images)
+        images = images[None, :, :] / self.scale
+        # if np.random.uniform() > 0.5:
+        #     images += np.random.normal(*images.shape) * 0.1
+        targets = self.targets[index]
+        return images, targets
+
+    def __len__(self):
+        return self.len

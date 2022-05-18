@@ -1,7 +1,7 @@
 import jax
-from functools import partial
 from jax.tree_util import tree_flatten, tree_unflatten, register_pytree_node
-from jax import vjp, jvp, eval_shape, numpy as jnp, jacobian, partial
+from jax import vjp, jvp, eval_shape, numpy as jnp, jacobian
+from functools import partial
 
 
 def delta_vjp(predict_fn, params, delta):

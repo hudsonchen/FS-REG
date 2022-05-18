@@ -9,15 +9,15 @@ from haiku._src import pool
 import jax
 import jax.numpy as jnp
 
-# If forking replace this block with `import haiku as hk`.
-hk = types.ModuleType("haiku")
-hk.Module = module.Module
-hk.BatchNorm = batch_norm.BatchNorm
-hk.Conv2D = conv.Conv2D
-hk.Linear = basic.Linear
-hk.max_pool = pool.max_pool
-hk.avg_pool = pool.avg_pool
-del basic, batch_norm, conv, module, pool
+import haiku as hk
+# hk = types.ModuleType("haiku")
+# hk.Module = module.Module
+# hk.BatchNorm = batch_norm.BatchNorm
+# hk.Conv2D = conv.Conv2D
+# hk.Linear = basic.Linear
+# hk.max_pool = pool.max_pool
+# hk.avg_pool = pool.avg_pool
+# del basic, batch_norm, conv, module, pool
 FloatStrOrBool = Union[str, float, bool]
 
 
@@ -32,11 +32,13 @@ class BlockV1(hk.Module):
             bn_config: Mapping[str, FloatStrOrBool],
             bottleneck: bool,
             use_bn: bool,
+            fix_up: bool,
             name: Optional[str] = None,
     ):
         super().__init__(name=name)
         self.use_projection = use_projection
         self.use_bn = use_bn
+        self.fix_up = fix_up
 
         bn_config = dict(bn_config)
         bn_config.setdefault("create_scale", True)
@@ -84,6 +86,12 @@ class BlockV1(hk.Module):
         self.layers = layers
 
     def __call__(self, inputs, is_training, test_local_stats):
+        bias_1a = hk.get_parameter("bias_1a", shape=[], init=jnp.zeros)
+        bias_1b = hk.get_parameter("bias_1b", shape=[], init=jnp.zeros)
+        bias_2a = hk.get_parameter("bias_2a", shape=[], init=jnp.zeros)
+        bias_2b = hk.get_parameter("bias_2b", shape=[], init=jnp.zeros)
+        scale = hk.get_parameter("scale", shape=[], init=jnp.ones)
+
         out = shortcut = inputs
 
         if self.use_projection:
@@ -93,10 +101,22 @@ class BlockV1(hk.Module):
 
         for i, (conv_i, bn_i) in enumerate(self.layers):
             out = conv_i(out)
+            if self.fix_up and i == 0:
+                out = out + bias_1a
+            if self.fix_up and i == 1:
+                out = out + bias_2a
+
             if self.use_bn:
                 out = bn_i(out, is_training, test_local_stats)
-            if i < len(self.layers) - 1:  # Don't apply relu on last layer
+
+            if i == 0:
+                if self.fix_up:
+                    out = out + bias_1b
                 out = jax.nn.relu(out)
+
+            if i == 1:
+                if self.fix_up:
+                    out = out * scale + bias_2b
 
         return jax.nn.relu(out + shortcut)
 
@@ -114,6 +134,7 @@ class BlockGroup(hk.Module):
             bottleneck: bool,
             use_projection: bool,
             use_bn: bool,
+            fix_up: bool,
             name: Optional[str] = None,
     ):
         super().__init__(name=name)
@@ -129,6 +150,7 @@ class BlockGroup(hk.Module):
                           bottleneck=bottleneck,
                           bn_config=bn_config,
                           use_bn=use_bn,
+                          fix_up=fix_up,
                           name="block_%d" % (i)))
 
     def __call__(self, inputs, is_training, test_local_stats):
@@ -154,6 +176,7 @@ class ResNet(hk.Module):
             blocks_per_group: Sequence[int],
             num_classes: int,
             use_bn: bool,
+            fix_up: bool,
             resnet_v1: bool = False,
             bn_config: Optional[Mapping[str, FloatStrOrBool]] = None,
             resnet_v2: bool = False,
@@ -189,6 +212,7 @@ class ResNet(hk.Module):
         self.resnet_v2 = resnet_v2
         self.resnet_v1 = resnet_v1
         self.use_bn = use_bn
+        self.fix_up = fix_up
 
         bn_config = dict(bn_config or {})
         bn_config.setdefault("decay_rate", 0.9)
@@ -237,11 +261,15 @@ class ResNet(hk.Module):
                            bottleneck=bottleneck,
                            use_projection=use_projection[i],
                            use_bn=use_bn,
+                           fix_up=fix_up,
                            name="block_group_%d" % (i)))
 
         self.logits = hk.Linear(num_classes, **logits_config)
 
     def __call__(self, inputs, is_training, test_local_stats=False):
+        bias_1 = hk.get_parameter("bias_1", shape=[], init=jnp.zeros)
+        bias_2 = hk.get_parameter("bias_2", shape=[], init=jnp.zeros)
+
         out = inputs
         out = self.initial_conv(out)
         if self.resnet_v1:
@@ -249,12 +277,15 @@ class ResNet(hk.Module):
                               window_shape=(1, 3, 3, 1),
                               strides=(1, 2, 2, 1),
                               padding="SAME")
-
+        if self.fix_up:
+            out = out + bias_1
         for block_group in self.block_groups:
             out = block_group(out, is_training, test_local_stats)
         # out = hk.avg_pool(out, window_shape=4, strides=4, padding='VALID')
         # out = out.reshape(out.shape[0], -1)
         out = jnp.mean(out, axis=(1, 2))
+        if self.fix_up:
+            out = out + bias_2
         return self.logits(out)
 
 
@@ -265,6 +296,7 @@ class ResNet18(ResNet):
             self,
             num_classes: int,
             use_bn: bool,
+            fix_up: bool,
             bn_config: Optional[Mapping[str, FloatStrOrBool]] = None,
             resnet_v1: bool = False,
             resnet_v2: bool = False,
@@ -304,6 +336,7 @@ class ResNet18(ResNet):
             }
         super().__init__(num_classes=num_classes,
                          use_bn=use_bn,
+                         fix_up=fix_up,
                          bn_config=bn_config,
                          initial_conv_config=initial_conv_config,
                          resnet_v1=resnet_v1,

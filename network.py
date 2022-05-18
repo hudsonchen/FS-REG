@@ -83,3 +83,45 @@ class LeNet:
             out = hk.dropout(self.rng_key, self.dropout_rate, out)
         out = self.fc2(out)
         return out
+
+
+class protein_network:
+    def __init__(
+            self,
+            output_dim: int,
+            use_dropout: bool = False,
+            dropout_rate: float = 0.0,
+            activation_fn: str = "relu",
+            seed: int = 1,
+    ):
+        self.output_dim = output_dim
+        self.activation_fn = ACTIVATION_DICT[activation_fn]
+        self.rng_key = jax.random.PRNGKey(seed)
+        self.use_dropout = use_dropout
+        self.dropout_rate = dropout_rate
+
+        self.conv1 = hk.Conv2D(
+            output_channels=32,
+            kernel_shape=3,
+            padding="SAME",
+        )
+        self.conv2 = hk.Conv2D(
+            output_channels=64,
+            kernel_shape=3,
+            padding="SAME",
+        )
+
+        self.fc1 = hk.Linear(output_size=128)
+        self.fc2 = hk.Linear(output_size=self.output_dim)
+
+    def __call__(self, inputs: jnp.ndarray):
+        out = inputs
+        out = self.activation_fn(self.conv1(out))
+        out = self.activation_fn(self.conv2(out))
+
+        out = out.reshape([inputs.shape[0], -1])
+        # out = hk.dropout(self.rng_key, 0.25, out)
+        out = self.activation_fn(self.fc1(out))
+        # out = hk.dropout(self.rng_key, 0.50, out)
+        out = self.fc2(out)
+        return out

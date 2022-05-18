@@ -65,4 +65,3 @@ def tensor2array(image, label, num_classes):
 def split(arr, n_devices):
     """Splits the first axis of `arr` evenly across the number of devices."""
     return arr.reshape(n_devices, arr.shape[0] // n_devices, *arr.shape[1:])
-

@@ -18,6 +18,13 @@
             </list>
           </settings>
         </remote-mappings>
+        <remote-mappings server-id="python@sftp://xzhoubi@gpu8:22/home/xzhoubi/hudson/miniconda3/envs/hudson/bin/python">
+          <settings>
+            <list>
+              <mapping local-root="$PROJECT_DIR$" remote-root="/home/xzhoubi/hudson/function_map" />
+            </list>
+          </settings>
+        </remote-mappings>
       </list>
     </list>
   </component>

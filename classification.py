@@ -1,4 +1,3 @@
-from typing import Tuple, Callable, List
 from jax import jit
 import jax
 import jax.numpy as jnp
@@ -14,9 +13,11 @@ import network
 import utils
 import utils_logging
 import resnet_mod
+from jax.config import config
 
-# from jax import config
-# config.update('jax_disable_jit', True)
+config.update('jax_disable_jit', False)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 
 print(os.listdir('/usr/local/'))
 print(os.getcwd())
@@ -35,6 +36,7 @@ parser.add_argument('--dummy_input_dim', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=100)
 parser.add_argument('--inverse', action="store_true", default=False)
 parser.add_argument('--no_bn', action="store_true", default=False)
+parser.add_argument('--fix_up', action="store_true", default=False)
 parser.add_argument('--use_dropout', action="store_true", default=False)
 parser.add_argument('--dropout_rate', type=float, default=0.0)
 parser.add_argument('--element_wise', action="store_true", default=False)
@@ -71,6 +73,8 @@ elif args.dataset == "cifar10":
         batch_size=args.batch_size,
         data_augmentation=args.aug,
         train_size=args.train_size)
+elif args.dataset == "scop":
+    image_size, num_classes, train_loader, test_loader = dataset.get_SCOP(batch_size=args.batch_size)
 else:
     raise NotImplementedError
 
@@ -84,11 +88,11 @@ if args.architecture == "lenet":
 elif args.architecture == "resnet18":
     if args.train_size < 3000 and not args.aug:
         def forward(x, is_training):
-            net = resnet_mod.ResNet18(10, use_bn=not args.no_bn, resnet_v1=True)
+            net = resnet_mod.ResNet18(10, use_bn=not args.no_bn, fix_up=args.fix_up, resnet_v1=True)
             return net(x, is_training)
     else:
         def forward(x, is_training):
-            net = resnet_mod.ResNet18(10, use_bn=not args.no_bn)
+            net = resnet_mod.ResNet18(10, use_bn=not args.no_bn, fix_up=args.fix_up)
             return net(x, is_training)
 
     forward = hk.transform_with_state(forward)
@@ -97,10 +101,15 @@ elif args.architecture == "resnet18":
     apply_fn_eval = partial(forward.apply, is_training=False)
 elif args.architecture == "vgg11":
     pass
-elif args.architecture == 'mlp':
-    init_fn, apply_fn = hk.transform_with_state(lambda x: network.MLP(output_dim=10)(x))
+elif args.architecture == 'protein':
+    init_fn, apply_fn = hk.transform_with_state(lambda x: network.protein_network(output_dim=num_classes,
+                                                                                  use_dropout=args.use_dropout,
+                                                                                  dropout_rate=args.dropout_rate)(x))
+    apply_fn_train = apply_fn
+    apply_fn_eval = apply_fn
 else:
-    raise NotImplementedError
+    raise NotImplementedError(args.architecture)
+
 
 x_init = jnp.ones(image_size)
 params_init, state = init_fn(rng_key, x_init)
@@ -195,7 +204,6 @@ for epoch in tqdm(range(args.epochs)):
         # print('NTK', ntk)
         # print('NTK Inv', ntk_inverse)
 
-
     if (epoch + 1) % args.log_freq == 0:
         metric_train = Evaluate.evaluate(train_loader,
                                          params,
@@ -207,7 +215,7 @@ for epoch in tqdm(range(args.epochs)):
                                         params,
                                         state,
                                         rng_key,
-                                        batch_size=1000)
+                                        batch_size=100)
 
         print(f"Epoch:{epoch} Partial Train Acc:{metric_train['acc']:2f}% Test Acc:{metric_test['acc']:2f}%")
         print(f"Epoch:{epoch} Partial Train LLK:{metric_train['llk']:2f} Test LLK:{metric_test['llk']:2f}")

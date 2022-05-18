@@ -39,6 +39,7 @@ class Evaluate:
             loss_ += loss_value
 
             preds = self.apply_fn(params, state, rng_key, image)[0]
+
             acc = jnp.equal(jnp.argmax(preds, axis=1), jnp.argmax(label, axis=1)).sum()
             acc_ += acc
 
