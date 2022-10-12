@@ -19,7 +19,7 @@ np.random.seed(1)
 
 class PermutedMnistGenerator:
     def __init__(self, max_iter=5):
-        f = gzip.open('/home/xzhoubi/hudson/function_map/data/mnist.pkl.gz', 'rb')
+        f = gzip.open('/home/function_map/data/mnist.pkl.gz', 'rb')
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
         train_set, valid_set, test_set = u.load()
@@ -61,7 +61,7 @@ class PermutedMnistGenerator:
 
 class SplitMnistGenerator:
     def __init__(self):
-        f = gzip.open('/home/xzhoubi/hudson/function_map/data/mnist.pkl.gz', 'rb')
+        f = gzip.open('/home/function_map/data/mnist.pkl.gz', 'rb')
         u = pickle._Unpickler(f)
         u.encoding = 'latin1'
         train_set, valid_set, test_set = u.load()

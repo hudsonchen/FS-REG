@@ -241,7 +241,7 @@ def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/",
 
 def get_SCOP(args, batch_size, total_size):
     image_size = [1, 400, 20, 1]
-    num_classes = int(np.load(f'/home/xzhoubi/hudson/data/scop/num_class_{args.bio_idx}.npy'))
+    num_classes = int(np.load(f'/home/data/scop/num_class_{args.bio_idx}.npy'))
     train_size_all = int(total_size * 0.6)
     test_batch = total_size - train_size_all
 
@@ -270,11 +270,11 @@ class SCOP(Dataset):
     def __init__(self, args, train_or_test, total_size):
         self.scale = 1.
         rand_perm = np.random.permutation(total_size)
-        with open(f'/home/xzhoubi/hudson/data/scop/images_{args.bio_idx}', 'rb') as fo:
+        with open(f'/home/data/scop/images_{args.bio_idx}', 'rb') as fo:
             images = pickle.load(fo, encoding='bytes')
             images = images[rand_perm, :]
 
-        with open(f'/home/xzhoubi/hudson/data/scop/targets_{args.bio_idx}', 'rb') as fo:
+        with open(f'/home/data/scop/targets_{args.bio_idx}', 'rb') as fo:
             targets = pickle.load(fo, encoding='bytes')
             targets = targets[rand_perm]
 

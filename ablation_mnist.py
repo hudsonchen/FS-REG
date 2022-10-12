@@ -41,7 +41,7 @@ parser.add_argument('--save', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--log_freq', type=int, default=5)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results/ablation")
+parser.add_argument('--save_path', type=str, default="/home/function_map/results/ablation")
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 args = parser.parse_args()
@@ -290,6 +290,6 @@ if args.save:
     print(f"\nChanging save path from\n\n{save_path}\n\nto\n\n{save_path}__complete\n")
     os.rename(save_path, f"{save_path}__complete")
 
-with open(f'/home/xzhoubi/hudson/function_map/results/ablation/norm_all_{args.reg}_{args.optimizer}_seed_{args.seed}', "wb") as file:
+with open(f'/home/function_map/results/ablation/norm_all_{args.reg}_{args.optimizer}_seed_{args.seed}', "wb") as file:
     pickle.dump(norm_all, file)
 

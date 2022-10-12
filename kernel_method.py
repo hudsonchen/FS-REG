@@ -40,7 +40,7 @@ parser.add_argument('--save', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--log_freq', type=int, default=5)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results")
+parser.add_argument('--save_path', type=str, default="/home/function_map/results")
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 parser.add_argument('--sigma', type=float, default=0.1)
@@ -169,8 +169,8 @@ def J_J_T(J_1, J_2, ntk):
     return ntk
 
 
-if os.path.isfile(f'/home/xzhoubi/hudson/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy'):
-    K_train = jnp.load(f'/home/xzhoubi/hudson/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy')
+if os.path.isfile(f'/home/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy'):
+    K_train = jnp.load(f'/home/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy')
 else:
     for i in tqdm(range(iter_train)):
         rng_key, _ = jax.random.split(rng_key)
@@ -189,7 +189,7 @@ else:
 
             ntk_batch = J_J_T(J_1, J_2, jnp.zeros([ntk_dim, ntk_dim]))
             K_train = jax.ops.index_update(K_train, jax.ops.index[i * ntk_dim:(i+1) * ntk_dim, j * ntk_dim:(j+1) * ntk_dim], ntk_batch)
-    np.save(f'/home/xzhoubi/hudson/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy', K_train)
+    np.save(f'/home/function_map/kernel_saved_{args.dataset}/K_train_{train_num}.npy', K_train)
 print("Compute Train NTK Finished!\n\n")
 
 # Scale down K_train for numerical reasons
@@ -259,6 +259,6 @@ for itx in range(10):
     accuracy_all.append(acc)
 
 print("Saving Results")
-file_name = f'/home/xzhoubi/hudson/function_map/results/kernel_reg_{args.dataset}/acc_{train_num}_{sigma}.npy'
+file_name = f'/home/function_map/results/kernel_reg_{args.dataset}/acc_{train_num}_{sigma}.npy'
 np.save(file_name, jnp.array(accuracy_all))
 

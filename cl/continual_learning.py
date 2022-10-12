@@ -1,6 +1,6 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-path = '/import/home/xzhoubi/hudson/function_map/cl'
+path = '/import/home/function_map/cl'
 os.chdir(path)
 print(os.getcwd())
 import sys
@@ -46,7 +46,7 @@ parser.add_argument('--coreset_method', type=str, default='random')
 parser.add_argument('--head_style', type=str, default='single')
 parser.add_argument('--train_on_coreset', action="store_true", default=False)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/cl/results")
+parser.add_argument('--save_path', type=str, default="/home/function_map/cl/results")
 parser.add_argument('--save', action="store_true", default=False)
 parser.add_argument('--seed', type=int, default=1)
 args = parser.parse_args()

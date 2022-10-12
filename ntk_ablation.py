@@ -176,8 +176,8 @@ if __name__ == "__main__":
 
     # empirical_ntk = get_empirical_ntk(image, params, state, rng_key_2)[:, 0, :, 0]
     # analytic_ntk = get_analytic_ntk(image, rng_key_1)
-    # jnp.save(f"/import/home/xzhoubi/hudson/function_map/rebuttal_icml/analytic_ntk_{args.batch_size}_{args.hidden_dim}.npy", analytic_ntk)
-    # jnp.save(f"/import/home/xzhoubi/hudson/function_map/rebuttal_icml/empirical_ntk_{args.batch_size}_{args.hidden_dim}.npy", empirical_ntk)
+    # jnp.save(f"/import/home/function_map/rebuttal_icml/analytic_ntk_{args.batch_size}_{args.hidden_dim}.npy", analytic_ntk)
+    # jnp.save(f"/import/home/function_map/rebuttal_icml/empirical_ntk_{args.batch_size}_{args.hidden_dim}.npy", empirical_ntk)
 
     opt = optax.adam(args.lr)
     opt_state = opt.init(params)

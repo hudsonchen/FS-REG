@@ -46,7 +46,7 @@ parser.add_argument('--save', action="store_true", default=False)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--log_freq', type=int, default=5)
 parser.add_argument('--lr', type=float, default=1e-3)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results")
+parser.add_argument('--save_path', type=str, default="/home/function_map/results")
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--bio_idx', type=int, default=0)
 parser.add_argument('--train_size', type=int, default=100)
@@ -76,7 +76,7 @@ elif args.dataset == "cifar10":
         data_augmentation=args.aug,
         train_size=args.train_size)
 elif args.dataset == "scop":
-    total_size = int(np.load(f'/home/xzhoubi/hudson/data/scop/total_size_{args.bio_idx}.npy'))
+    total_size = int(np.load(f'/home/data/scop/total_size_{args.bio_idx}.npy'))
     image_size, num_classes, train_loader, test_loader = dataset.get_SCOP(args=args,
                                                                           batch_size=args.batch_size,
                                                                           total_size=total_size)

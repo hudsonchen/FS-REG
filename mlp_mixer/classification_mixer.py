@@ -3,7 +3,7 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3, 4, 5, 6, 7"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION=.XX"] = "0.95"
 path = '/home/weizhong/hudson/function_map/mlp_mixer'
-# path = '/home/xzhoubi/hudson/function_map/mlp_mixer'
+# path = '/home/function_map/mlp_mixer'
 os.chdir(path)
 print(os.getcwd())
 import sys
@@ -41,7 +41,7 @@ parser.add_argument('--lr_decay', type=float, default=0.3)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=200)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results/mlp_mixer")
+parser.add_argument('--save_path', type=str, default="/home/function_map/results/mlp_mixer")
 parser.add_argument('--save', action="store_true", default=False)
 args = parser.parse_args()
 kwargs = utils_mixer.process_args(args)
@@ -86,7 +86,7 @@ net = MLP_mixer_mod.MlpMixer(patches=[16, 16],
                              channels_mlp_dim=3072)
 init_state, init_params = net.init(rng_key, x_init).pop('params')
 
-# pretrained_path = '/home/xzhoubi/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
+# pretrained_path = '/home/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
 pretrained_path = '/home/weizhong/hudson/function_map/ckpts/imagenet1k_Mixer-B_16.npz'
 params = checkpoint.load_pretrained(pretrained_path, init_params)
 del init_params
