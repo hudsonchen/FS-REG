@@ -113,7 +113,7 @@ class protein_network:
         self.max_pool = hk.MaxPool(
             window_shape=(1, 2, 2, 1), strides=(1, 2, 2, 1), padding="VALID"
         )
-        self.fc1 = hk.Linear(output_size=64)
+        # self.fc1 = hk.Linear(output_size=64)
         self.fc2 = hk.Linear(output_size=self.output_dim)
 
     def __call__(self, inputs: jnp.ndarray):
@@ -126,6 +126,6 @@ class protein_network:
         out = out.reshape([inputs.shape[0], -1])
         # out = hk.dropout(self.rng_key, 0.25, out)
         # out = hk.dropout(self.rng_key, 0.50, out)
-        out = self.activation_fn(self.fc1(out))
+        # out = self.activation_fn(self.fc1(out))
         out = self.fc2(out)
         return out

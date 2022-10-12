@@ -19,8 +19,10 @@ from jax.config import config
 config.update('jax_disable_jit', False)
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+
 print(os.listdir('/usr/local/'))
 print(os.getcwd())
+
 
 # Args
 parser = argparse.ArgumentParser()
@@ -51,6 +53,7 @@ parser.add_argument('--train_size', type=int, default=100)
 args = parser.parse_args()
 kwargs = utils.process_args(args)
 
+
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu)
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.4"
 abspath = os.path.abspath(__file__)
@@ -64,19 +67,19 @@ class_num = 10
 
 # Load Dataset
 if args.dataset == "mnist":
-    image_size, num_classes, train_loader, test_loader, test_batch = dataset.get_MNIST(
+    image_size, num_classes, train_loader, test_loader = dataset.get_MNIST(
         batch_size=args.batch_size,
         train_size=args.train_size)
 elif args.dataset == "cifar10":
-    image_size, num_classes, train_loader, test_loader, test_batch = dataset.get_CIFAR10(
+    image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR10(
         batch_size=args.batch_size,
         data_augmentation=args.aug,
         train_size=args.train_size)
 elif args.dataset == "scop":
     total_size = int(np.load(f'/home/xzhoubi/hudson/data/scop/total_size_{args.bio_idx}.npy'))
-    image_size, num_classes, train_loader, test_loader, test_batch = dataset.get_SCOP(args=args,
-                                                                                      batch_size=args.batch_size,
-                                                                                      total_size=total_size)
+    image_size, num_classes, train_loader, test_loader = dataset.get_SCOP(args=args,
+                                                                          batch_size=args.batch_size,
+                                                                          total_size=total_size)
     print(f'class num is {num_classes} and total data num is {total_size}')
 else:
     raise NotImplementedError
@@ -113,6 +116,7 @@ elif args.architecture == 'protein':
 else:
     raise NotImplementedError(args.architecture)
 
+
 x_init = jnp.ones(image_size)
 params_init, state = init_fn(rng_key, x_init)
 params = params_init
@@ -136,10 +140,10 @@ elif args.optimizer == "sgd":
     schedule_fn_final = schedule_fn(args.lr, len(train_loader))
     momentum = 0.9
     opt = optax.chain(
-        optax.trace(decay=momentum, nesterov=False),
-        optax.scale_by_schedule(schedule_fn_final),
-        optax.scale(-1),
-    )
+            optax.trace(decay=momentum, nesterov=False),
+            optax.scale_by_schedule(schedule_fn_final),
+            optax.scale(-1),
+        )
 else:
     raise NotImplementedError
 
@@ -217,19 +221,12 @@ for epoch in tqdm(range(args.epochs)):
                                         params,
                                         state,
                                         rng_key,
-                                        batch_size=test_batch)
+                                        batch_size=10)
 
         print(f"Epoch:{epoch} Partial Train Acc:{metric_train['acc']:2f}% Test Acc:{metric_test['acc']:2f}%")
         print(f"Epoch:{epoch} Partial Train LLK:{metric_train['llk']:2f} Test LLK:{metric_test['llk']:2f}")
         print(f"Epoch:{epoch} Partial Train ECE:{metric_train['ece']:2f} Test ECE:{metric_test['ece']:2f}")
         print(f"Epoch:{epoch} Partial Train Loss:{metric_train['loss']:3f} Test Loss:{metric_test['loss']:3f}")
-
-        auc_value = Evaluate.auroc(test_loader,
-                                   params,
-                                   state,
-                                   rng_key,
-                                   batch_size=test_batch)
-        print(f"AUROC value:{auc_value}")
 
         if args.save:
             Evaluate.save_log(epoch, metric_train, metric_test)

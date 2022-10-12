@@ -170,7 +170,7 @@ def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/", 
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
                                               shuffle=False, num_workers=4)
 
-    return image_size, num_classes, train_loader, test_loader
+    return image_size, num_classes, train_loader, test_loader, test_batch
 
 
 def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/", crop_size=32):
@@ -236,14 +236,14 @@ def get_CIFAR100(batch_size, train_size, data_augmentation=True, root="./data/",
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
                                               shuffle=False, num_workers=4)
 
-    return image_size, num_classes, train_loader, test_loader
+    return image_size, num_classes, train_loader, test_loader, test_batch
 
 
-def get_SCOP(batch_size, total_size):
+def get_SCOP(args, batch_size, total_size):
     image_size = [1, 400, 20, 1]
-    num_classes = int(np.load('/home/xzhoubi/hudson/data/scop/num_class.npy'))
-    train_size_all = int(total_size * 0.7)
-    test_batch = 100
+    num_classes = int(np.load(f'/home/xzhoubi/hudson/data/scop/num_class_{args.bio_idx}.npy'))
+    train_size_all = int(total_size * 0.6)
+    test_batch = total_size - train_size_all
 
     idxs = np.arange(train_size_all)  # shuffle examples first
     rnd = np.random.RandomState(42)
@@ -251,13 +251,13 @@ def get_SCOP(batch_size, total_size):
     train_idxs = idxs[:train_size_all]
     train_sampler = torch.utils.data.sampler.SubsetRandomSampler(train_idxs)
 
-    train_dataset = SCOP(train_or_test='train', total_size=total_size)
-    test_dataset = SCOP(train_or_test='test', total_size=total_size)
+    train_dataset = SCOP(args=args, train_or_test='train', total_size=total_size)
+    test_dataset = SCOP(args=args, train_or_test='test', total_size=total_size)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
                                                shuffle=False, num_workers=12, sampler=train_sampler, drop_last=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=test_batch,
                                               shuffle=False, num_workers=12, drop_last=True)
-    return image_size, num_classes, train_loader, test_loader
+    return image_size, num_classes, train_loader, test_loader, test_batch
 
 
 def collate_fn(batch):
@@ -267,23 +267,23 @@ def collate_fn(batch):
 
 
 class SCOP(Dataset):
-    def __init__(self, train_or_test, total_size):
+    def __init__(self, args, train_or_test, total_size):
         self.scale = 1.
         rand_perm = np.random.permutation(total_size)
-        with open('/home/xzhoubi/hudson/data/scop/images', 'rb') as fo:
+        with open(f'/home/xzhoubi/hudson/data/scop/images_{args.bio_idx}', 'rb') as fo:
             images = pickle.load(fo, encoding='bytes')
             images = images[rand_perm, :]
 
-        with open('/home/xzhoubi/hudson/data/scop/targets', 'rb') as fo:
+        with open(f'/home/xzhoubi/hudson/data/scop/targets_{args.bio_idx}', 'rb') as fo:
             targets = pickle.load(fo, encoding='bytes')
             targets = targets[rand_perm]
 
         if train_or_test == 'train':
-            self.images = images[:int(total_size * 0.75), :]
-            self.targets = targets[:int(total_size * 0.75)]
+            self.images = images[:int(total_size * 0.6), :]
+            self.targets = targets[:int(total_size * 0.6)]
         else:
-            self.images = images[int(total_size * 0.75):, :]
-            self.targets = targets[int(total_size * 0.75):]
+            self.images = images[int(total_size * 0.6):, :]
+            self.targets = targets[int(total_size * 0.6):]
         self.len = len(self.images)
 
     def __getitem__(self, index):
