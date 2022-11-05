@@ -19,12 +19,6 @@
 
 # Set the working directory to somewhere in your scratch space.
 # This directory must exist.
+#$ -wd /home/ucabzc9/scratch/output/
 
-$ -wd /home/ucabzc9/scratch/output/
-
-# Automatically set threads using ppn. On a cluster with 40 cores
-# per node this will be 80/2 = 40 threads.
-export OMP_NUM_THREADS=$(ppn)
-
-# Run our MPI job with the default modules. Gerun is a wrapper script for mpirun.
-gerun $HOME/src/madscience/madhybrid
+nvidia-smi
