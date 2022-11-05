@@ -1,36 +1,31 @@
-#!/bin/bash
+#!/bin/bash -l
 
-# NOTE: Lines starting with "#SBATCH" are valid SLURM commands or statements,
-#       while those starting with "#" and "##SBATCH" are comments.  Uncomment
-#       "##SBATCH" line means to remove one # and start with #SBATCH to be a
-#       SLURM command or statement.
+# Batch script to run a serial job under SGE.
 
+# Request ten minutes of wallclock time (format hours:minutes:seconds).
+#$ -l h_rt=0:1:0
 
-#SBATCH -J slurm_job #Slurm job name
+# Request 1 gigabyte of RAM (must be an integer followed by M, G, or T)
+#$ -l mem=1G
 
-# Set the maximum runtime, uncomment if you need it
-##SBATCH -t 48:00:00 #Maximum runtime of 48 hours
+# Request 15 gigabyte of TMPDIR space (default is 10 GB - remove if cluster is diskless)
+#$ -l tmpfs=15G
 
-# Enable email notificaitons when job begins and ends, uncomment if you need it
-##SBATCH --mail-user=user_name@ust.hk #Update your email address
-##SBATCH --mail-type=begin
-##SBATCH --mail-type=end
+# Set the name of the job.
+#$ -N Serial_Job
 
-# Choose partition (queue) "gpu" or "gpu-share"
-#SBATCH -p gpu
+# Set the working directory to somewhere in your scratch space.
+#  This is a necessary step as compute nodes cannot write to $HOME.
+# Replace "<your_UCL_id>" with your UCL user ID.
+#$ -wd /home/<your_UCL_id>/Scratch/workspace
 
-# To use 4 cpu cores and 2 gpu devices in a node
-#SBATCH -N 1 -n 8 --gres=gpu:8
+# Your work should be done in $TMPDIR
+cd $TMPDIR
 
-# Setup runtime environment if necessary
-# or you can source ~/.bashrc or ~/.bash_profile
+# Run the application and put the output into a file called date.txt
+/bin/date > date.txt
 
-# export XLA_PYTHON_CLIENT_PREALLOCATE="false"
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda-10.2:/usr/local/cuda-10.2/lib64:/usr/local/cuda-10.2/include
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/include
+# Preferably, tar-up (archive) all output files onto the shared scratch area
+tar -zcvf $HOME/Scratch/files_from_job_$JOB_ID.tar.gz $TMPDIR
 
-# Go to the job submission directory and run your application
-cd $HOME/apps/slurm
-# Execute applications in parallel
-srun -p gpu -n 1 --gres=gpu:8 --cpus-per-task=8 /home/weizhong/miniconda3/envs/fmap/bin/python3.8 /home/weizhong/hudson/function_map/mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar100 --method map --optimizer sgd --reg 0.00 --inverse --dummy_input_dim 2 --element_wise --epochs 30 --train_size 50000 --batch_size 128 --aug --seed 2 --save --save_path /home/weizhong/hudson/function_map/results
-wait
+# Make sure you have given enough time for the copy to complete!
