@@ -18,28 +18,37 @@ on the induced space of functions is essential.
 Check out the requirements.txt file.
 
 ## Reproducing results
-To reproduce the results on MNIST \
-`python classification.py --dataset mnist --optimizer sgd --architecture lenet 
+To reproduce the results on MNIST
+```python 
+python classification.py --dataset mnist --optimizer sgd --architecture lenet 
 --lr 0.01 --method ntk_norm --inverse --reg 100.0 --epochs 200 --train_size 100 
---lr_decay 1.0 --seed 0`
+--lr_decay 1.0 --seed 0
+```
 
-To reproduce the results on CIFAR10 \
-`python classification.py --dataset cifar10 --optimizer adam --architecture resnet18 
+To reproduce the results on CIFAR10
+```python 
+python classification.py --dataset cifar10 --optimizer adam --architecture resnet18 
 --lr 0.001 --batch_size 200 --method ntk_norm --inverse --dummy_input_dim 10 --reg 10.0 
---epochs 150 --train_size 10000 --lr_decay 1.0 --aug --seed 0`
+--epochs 150 --train_size 10000 --lr_decay 1.0 --aug --seed 0
+```
 
-To reproduce the results on CIFAR100 with MLP-Mixer \
-`python mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar100 --method ntk_norm --optimizer sgd --reg 10 
+To reproduce the results on CIFAR100 with MLP-Mixer
+```python python mlp_mixer/classification_mixer.py --lr 0.01 --dataset cifar100 --method ntk_norm --optimizer sgd --reg 10 
 --inverse --dummy_input_dim 2 --element_wise
---epochs 10 --train_size 50000 --batch_size 128 --aug --seed 0`
+--epochs 10 --train_size 50000 --batch_size 128 --aug --seed 0
+```
 
-To reproduce the results on Permutated MNIST (continual learning) \
-`python cl/continual_learning.py
+To reproduce the results on Permutated MNIST (continual learning)
+```python 
+python cl/continual_learning.py
 --dataset pmnist --method ntk_norm --hidden_dim 100 --epochs 10 --reg 100.0 --bs 200 --head_style single --inverse 
---element_wise --lr 3e-4 --dummy_num 20 --ind_method core --coreset_size 200`
+--element_wise --lr 3e-4 --dummy_num 20 --ind_method core --coreset_size 200
+```
 
-To reproduce the results on Split MNIST (continual learning) \
-`python cl/continual_learning.py
+To reproduce the results on Split MNIST (continual learning)
+```python 
+python cl/continual_learning.py
 --dataset pmnist --dataset smnist --method ntk_norm --epochs 30 --reg 10.0 --head_style multi --inverse --element_wise 
---lr 3e-4 --dummy_num 40 --hidden_dim 256 --ind_method core --coreset_size 40`
+--lr 3e-4 --dummy_num 40 --hidden_dim 256 --ind_method core --coreset_size 40
+```
 
