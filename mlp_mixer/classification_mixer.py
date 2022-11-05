@@ -1,11 +1,10 @@
 import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3, 4, 5, 6, 7"
 # os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION=.XX"] = "0.95"
-path = '/home/weizhong/hudson/function_map/mlp_mixer'
+path = '/users/timner/scratch-ssd/timner/deployment/hudson/function_map/mlp_mixer'
 # path = '/home/xzhoubi/hudson/function_map/mlp_mixer'
 os.chdir(path)
 print(os.getcwd())
+
 import sys
 sys.path.append('..')
 import jax
@@ -41,7 +40,7 @@ parser.add_argument('--lr_decay', type=float, default=0.3)
 parser.add_argument('--seed', type=int, default=1)
 parser.add_argument('--train_size', type=int, default=100)
 parser.add_argument('--batch_size', type=int, default=200)
-parser.add_argument('--save_path', type=str, default="/home/xzhoubi/hudson/function_map/results/mlp_mixer")
+parser.add_argument('--save_path', type=str, default="./function_map/results/mlp_mixer")
 parser.add_argument('--save', action="store_true", default=False)
 args = parser.parse_args()
 kwargs = utils_mixer.process_args(args)
@@ -61,13 +60,13 @@ print(n_devices)
 
 # Load Dataset
 if args.dataset == 'cifar10':
-    image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR10(
+    image_size, num_classes, train_loader, test_loader, _ = dataset.get_CIFAR10(
         batch_size=args.batch_size,
         data_augmentation=args.aug,
         train_size=args.train_size,
         crop_size=224)
 elif args.dataset == 'cifar100':
-    image_size, num_classes, train_loader, test_loader = dataset.get_CIFAR100(
+    image_size, num_classes, train_loader, test_loader, _ = dataset.get_CIFAR100(
         batch_size=args.batch_size,
         data_augmentation=args.aug,
         train_size=args.train_size,

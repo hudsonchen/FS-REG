@@ -68,7 +68,7 @@ def get_MNIST(batch_size, train_size, root="./data/"):
     image_size = [1, 32, 32, 1]
     num_classes = 10
     train_size_all = 60000
-    train_batch = 1000
+    test_batch = 1000
 
     transform_list = [transforms.Resize([32, 32]), transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
     transform = transforms.Compose(transform_list)
@@ -94,10 +94,10 @@ def get_MNIST(batch_size, train_size, root="./data/"):
         train_dataset, batch_size=batch_size, shuffle=False, num_workers=2, sampler=train_sampler,
     )
     test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=train_batch, shuffle=False, num_workers=2,
+        test_dataset, batch_size=test_batch, shuffle=False, num_workers=2,
     )
 
-    return image_size, num_classes, train_loader, test_loader
+    return image_size, num_classes, train_loader, test_loader, test_batch
 
 
 def get_CIFAR10(batch_size, train_size, data_augmentation=True, root="./data/", crop_size=32):

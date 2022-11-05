@@ -1,25 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="xzhoubi@ust_4:22" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+  <component name="PublishConfigData" autoUpload="Always" serverName="timner@tim:22 agent" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
     <serverData>
-      <paths name="xzhoubi@gpu10:22 agent (3)">
+      <paths name="timner@tim:22 agent">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/xzhoubi/hudson/function_map" local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="xzhoubi@gpu8:22 agent">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/home/xzhoubi/hudson/function_map" local="$PROJECT_DIR$" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="xzhoubi@ust_4:22">
-        <serverdata>
-          <mappings>
-            <mapping deploy="/home/xzhoubi/hudson/function_map" local="$PROJECT_DIR$" />
+            <mapping deploy="/users/timner/scratch-ssd/timner/deployment/hudson/function_map" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
