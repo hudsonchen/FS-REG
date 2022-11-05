@@ -1,6 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-path = '/import/home/xzhoubi/hudson/function_map/cl'
+path = '/users/timner/scratch-ssd/timner/deployment/hudson/function_map/cl'
 os.chdir(path)
 print(os.getcwd())
 import sys

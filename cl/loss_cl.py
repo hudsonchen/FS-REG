@@ -4,7 +4,7 @@ from typing import Tuple, Callable, List
 from functools import partial
 import jax
 import jax.numpy as jnp
-from jax.experimental import optimizers
+from jax.example_libraries import optimizers
 from jax import jit, random
 from jax.tree_util import tree_flatten, tree_unflatten, tree_map
 import matplotlib.pyplot as plt
